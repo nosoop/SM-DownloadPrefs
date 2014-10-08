@@ -87,7 +87,7 @@ public OnClientAuthorized(client, const String:auth[]) {
 /**
  * Tables to create:
  *
- * CREATE TABLE 'categories' ('categoryid' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'categoryname' TEXT NOT NULL, 'categorydesc' INTEGER, 'enabled' BOOLEAN NOT NULL);
+ * CREATE TABLE 'categories' ('categoryid' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'categoryname' TEXT NOT NULL, 'categorydesc' TEXT, 'enabled' BOOLEAN NOT NULL);
  * CREATE TABLE 'clients' ('sid3' INTEGER PRIMARY KEY NOT NULL, 'ipaddr' TEXT NOT NULL, 'lastconnect' INTEGER NOT NULL);
  * CREATE TABLE 'downloadprefs' ('sid3' INTEGER NOT NULL, 'categoryid' INTEGER NOT NULL, 'enabled' BOOLEAN NOT NULL);
  * CREATE TABLE 'files' ('categoryid' INTEGER, 'filepath' TEXT PRIMARY KEY NOT NULL);
@@ -97,7 +97,7 @@ public OnClientAuthorized(client, const String:auth[]) {
   * Flow to check if a download is allowed.
   * When a client is authorized: -> Update IP, SteamID3, lastconnect in table clients
   * When a client downloads a file: ->
-  *   - Get SteamID3 from the associated IP address in table clients,   (redirect / 404 if not found)
+  *   - Get SteamID3 from the associated IP address in table clients,   (redirect / 404 if not found) (if multiple clients on same IP within short period, take worst case?)
   *   - Get 'categoryid' by 'filepath' in table files (filepath obtained in query string),
   *   - Get 'enabled' by 'sid3' and 'category' in downloadprefs,
   *   - (If not found, get 'enabled' by 'categoryid' in table categories),
