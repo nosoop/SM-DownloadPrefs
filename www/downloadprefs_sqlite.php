@@ -51,7 +51,7 @@
         // Client did not pass a query -- assume they found sv_downloadurl, redirect to some explanation file?
 		header("HTTP/1.1 307 Temporary Redirect");
 	
-        $file = "clientproxy.html";
+        $file = "downloadprefs.html";
 		header("Location: http://$_SERVER[HTTP_HOST]/tf/$file" );
         return;
 	}

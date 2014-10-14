@@ -10,7 +10,7 @@
 
 #include <sourcemod>
 
-#define PLUGIN_VERSION          "0.1.0"
+#define PLUGIN_VERSION          "0.2.0"
 
 public Plugin:myinfo = {
     name = "Download Preferences",
@@ -20,11 +20,27 @@ public Plugin:myinfo = {
     url = "http://github.com/nosoop/SM-DownloadPrefs"
 }
 
+#define DATABASE_NAME           "downloadprefs"
+
 new Handle:g_hDatabase = INVALID_HANDLE;
 
 public OnPluginStart() {
-    // TODO get database handle
-    g_hDatabase = INVALID_HANDLE;
+    g_hDatabase = GetDatabase();
+}
+
+public OnPluginEnd() {
+    CloseHandle(g_hDatabase);
+}
+
+public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMaxErrors) {
+    RegPluginLibrary("downloadprefs");
+
+    CreateNative("RegClientDownloadCategory", Native_RegClientDownloadCategory);
+    CreateNative("RegClientDownloadFile", Native_RegClientDownloadFile);
+    CreateNative("SetClientDownloadPreference", Native_SetClientDownloadPreference);
+    CreateNative("GetClientDownloadPreference", Native_GetClientDownloadPreference);
+
+    return APLRes_Success;
 }
 
 /**
@@ -33,13 +49,25 @@ public OnPluginStart() {
  */
 public OnClientAuthorized(client, const String:auth[]) {
     if (!IsFakeClient(client)) {
-        decl String:sIPAddr[20];
-        
-        new iSteamID3 = GetSteamAccountID(client);
-        GetClientIP(client, sIPAddr, sizeof(sIPAddr));
-        
-        // TODO Perform fast query to store the IP address.
+        RegisterClientIP(client);
     }
+}
+
+/**
+ * Associates a client's SteamID3 with their current IP address.
+ * This must be called after the client is authorized.
+ */
+RegisterClientIP(client) {
+    decl String:sIPAddr[20], String:sQuery[1024];
+    
+    new iSteamID3 = GetSteamAccountID(client);
+    GetClientIP(client, sIPAddr, sizeof(sIPAddr));
+    
+    Format(sQuery, sizeof(sQuery),
+            "INSERT OR REPLACE INTO clients (sid3, ipaddr, lastconnect) VALUES ( %d, '%s', %d )",
+            iSteamID3, sIPAddr, GetTime());
+    
+    SQL_FastQuery(g_hDatabase, sQuery);
 }
 
 /**
@@ -49,11 +77,40 @@ public OnClientAuthorized(client, const String:auth[]) {
  * 
  * @param category          The category name to register.
  * @param description       The description associated with the category.
- * @param default           The file group is downloaded by default; clients must choose to opt-out.
+ * @param enabled           The file group is downloaded by default; clients must choose to opt-out.
  * 
  * @return categoryid       The ID of the category.
  */
-// _:RegClientDownloadCategory(const String:category[], const String:description[], bool:default = true);
+_:RegClientDownloadCategory(const String:category[], const String:description[], bool:enabled = true) {
+    new Handle:hQuery = INVALID_HANDLE, iCategoryID;
+    decl String:sQuery[1024];
+    Format(sQuery, sizeof(sQuery),
+            "INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, '%s', '%s', '%b')",
+            category, description, enabled);
+    SQL_FastQuery(g_hDatabase, sQuery);
+    
+    Format(sQuery, sizeof(sQuery),
+            "SELECT categoryid FROM categories WHERE categoryname='%s'",
+            category);
+    hQuery = SQL_Query(g_hDatabase, sQuery);
+    
+    SQL_FetchRow(hQuery);
+    iCategoryID = SQL_FetchInt(hQuery, 0);
+    
+    CloseHandle(hQuery);
+    
+    return iCategoryID;
+}
+
+public Native_RegClientDownloadCategory(Handle:hPlugin, nParams) {
+    decl String:category[512], String:description[512];
+    
+    GetNativeString(1, category, sizeof(category));
+    GetNativeString(2, description, sizeof(description));
+    new bool:bDefault = GetNativeCell(3);
+    
+    return RegClientDownloadCategory(category, description, bDefault);
+}
 
 /**
  * Registers a file to a category.
@@ -61,7 +118,22 @@ public OnClientAuthorized(client, const String:auth[]) {
  * @param categoryid        The ID of the category to register.
  * @param filepath          The full path of the file to download.
  */
-// RegClientDownloadFile(id, const String:filepath[]);
+RegClientDownloadFile(categoryid, const String:filepath[]) {
+    decl String:sQuery[1024];
+    Format(sQuery, sizeof(sQuery),
+            "INSERT OR REPLACE INTO files (categoryid, filepath) VALUES (%d, '%s')",
+            categoryid, filepath);
+    SQL_FastQuery(g_hDatabase, sQuery);
+}
+
+public Native_RegClientDownloadFile(Handle:hPlugin, nParams) {
+    new categoryid = GetNativeCell(1);
+    
+    decl String:filepath[512];
+    GetNativeString(2, filepath, sizeof(filepath));
+    
+    RegClientDownloadFile(categoryid, filepath);
+}
 
 /**
  * Stores the client's download preference.
@@ -70,7 +142,23 @@ public OnClientAuthorized(client, const String:auth[]) {
  * @param categoryid        The category of files to set a download preference for.
  * @param download          Whether or not the client downloads this file.
  */
-// SetClientDownloadPreference(client, categoryid, bool:download);
+SetClientDownloadPreference(client, categoryid, bool:enabled) {
+    new sid3 = GetSteamAccountID(client);
+    
+    decl String:sQuery[1024];
+    Format(sQuery, sizeof(sQuery),
+            "INSERT OR REPLACE INTO downloadprefs (sid3, categoryid, enabled) VALUES (%d, %d, %b)",
+            sid3, categoryid, enabled);
+    SQL_FastQuery(g_hDatabase, sQuery);
+}
+
+public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
+    new client = GetNativeCell(1),
+        categoryid = GetNativeCell(2),
+        bool:enabled = GetNativeCell(3);
+
+    SetClientDownloadPreference(client, categoryid, enabled);
+}
 
 /**
  * Retrieves a client's download preference.
@@ -82,7 +170,68 @@ public OnClientAuthorized(client, const String:auth[]) {
  * @return                  Boolean determining if a client allows downloads from this category,
  *                          or the default allow value if the client has not set their own.
  */
-// bool:GetClientDownloadPreference(client, categoryid);
+bool:GetClientDownloadPreference(client, categoryid) {
+    decl String:sQuery[1024];
+    new Handle:hQuery = INVALID_HANDLE;
+    new sid3 = GetSteamAccountID(client);
+    new bool:bEnabled;
+    
+    Format(sQuery, sizeof(sQuery),
+            "SELECT enabled FROM downloadprefs WHERE sid3=%d, categoryid=%d",
+            sid3, categoryid);
+    hQuery = SQL_Query(g_hDatabase, sQuery);
+    
+    if (SQL_GetRowCount(hQuery) > 0) {
+        SQL_FetchRow(hQuery);
+        bEnabled = bool:SQL_FetchInt(hQuery, 0);
+    } else {
+        Format(sQuery, sizeof(sQuery),
+                "SELECT enabled FROM categories WHERE categoryid=%d");
+        bEnabled = bool:SQL_QuerySingleRowInt(g_hDatabase, sQuery);
+    }
+    CloseHandle(hQuery);
+    
+    return bEnabled;
+}
+
+public Native_GetClientDownloadPreference(Handle:hPlugin, nParams) {
+    new client = GetNativeCell(1),
+        categoryid = GetNativeCell(2);
+
+    return GetClientDownloadPreference(client, categoryid);
+}
+
+/**
+ * Runs a query, returning the selected integer from the first row.
+ */
+_:SQL_QuerySingleRowInt(Handle:database, const String:query[]) {
+    new result;
+    new Handle:hQuery = SQL_Query(database, query);
+    
+    result = SQL_FetchInt(hQuery, 0);
+    CloseHandle(hQuery);
+    
+    return result;
+}
+
+/**
+ * Reads the database configuration.
+ */
+Handle:GetDatabase() {  
+    new Handle:hDatabase = INVALID_HANDLE;
+    
+    if (SQL_CheckConfig(DATABASE_NAME)) {
+        decl String:sErrorBuffer[256];
+        if ( (hDatabase = SQL_Connect(DATABASE_NAME, true, sErrorBuffer, sizeof(sErrorBuffer))) == INVALID_HANDLE ) {
+            SetFailState("[downloadprefs] Could not connect to database: %s", sErrorBuffer);
+        } else {
+            return hDatabase;
+        }
+    } else {
+        SetFailState("[downloadprefs] Could not find configuration %s to load database.", DATABASE_NAME);
+    }
+    return INVALID_HANDLE;
+}
 
 /**
  * Tables to create:
