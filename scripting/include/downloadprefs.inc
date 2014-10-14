@@ -18,6 +18,7 @@ public __pl_downloadprefs_SetNTVOptional() {
     MarkNativeAsOptional("RegClientDownloadFile");
     MarkNativeAsOptional("SetClientDownloadPreference");
     MarkNativeAsOptional("GetClientDownloadPreference");
+    MarkNativeAsOptional("ClientHasDownloadPreference");
 }
 
 /**
@@ -61,3 +62,15 @@ native SetClientDownloadPreference(client, categoryid, bool:enabled);
  *                          or the default allow value if the client has not set their own.
  */
 native bool:GetClientDownloadPreference(client, categoryid);
+
+/**
+ * Checks whether or not the client has their own download preference set.
+ * 
+ * @param client            The client to check preferences for.
+ * @param categoryid        The category of files to check for download preferences.
+ * @param value             A cell reference to store an existing preference value.
+ * 
+ * @return                  Boolean determining if a custom download preference is set.
+ *                          (False if using the default preference set by the download category.)
+ */
+native bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0);

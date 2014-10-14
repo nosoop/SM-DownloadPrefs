@@ -39,6 +39,7 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
     CreateNative("RegClientDownloadFile", Native_RegClientDownloadFile);
     CreateNative("SetClientDownloadPreference", Native_SetClientDownloadPreference);
     CreateNative("GetClientDownloadPreference", Native_GetClientDownloadPreference);
+    CreateNative("ClientHasDownloadPreference", Native_ClientHasDownloadPreference);
 
     return APLRes_Success;
 }
@@ -143,12 +144,21 @@ public Native_RegClientDownloadFile(Handle:hPlugin, nParams) {
  * @param download          Whether or not the client downloads this file.
  */
 SetClientDownloadPreference(client, categoryid, bool:enabled) {
+    decl String:sQuery[1024];
+
     new sid3 = GetSteamAccountID(client);
     
-    decl String:sQuery[1024];
-    Format(sQuery, sizeof(sQuery),
-            "INSERT OR REPLACE INTO downloadprefs (sid3, categoryid, enabled) VALUES (%d, %d, %b)",
-            sid3, categoryid, enabled);
+    if (ClientHasDownloadPreference(client, categoryid)) {
+        // Update existing entry.
+        Format(sQuery, sizeof(sQuery),
+                "UPDATE downloadprefs SET enabled = %d WHERE sid3 = %d AND categoryid = %d",
+                _:enabled, sid3, categoryid);
+    } else {
+        // Create new entry.
+        Format(sQuery, sizeof(sQuery),
+                "INSERT INTO downloadprefs (sid3, categoryid, enabled) VALUES (%d, %d, %d)",
+                sid3, categoryid, _:enabled);
+    }
     SQL_FastQuery(g_hDatabase, sQuery);
 }
 
@@ -172,24 +182,14 @@ public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
  */
 bool:GetClientDownloadPreference(client, categoryid) {
     decl String:sQuery[1024];
-    new Handle:hQuery = INVALID_HANDLE;
-    new sid3 = GetSteamAccountID(client);
     new bool:bEnabled;
     
-    Format(sQuery, sizeof(sQuery),
-            "SELECT enabled FROM downloadprefs WHERE sid3=%d, categoryid=%d",
-            sid3, categoryid);
-    hQuery = SQL_Query(g_hDatabase, sQuery);
-    
-    if (SQL_GetRowCount(hQuery) > 0) {
-        SQL_FetchRow(hQuery);
-        bEnabled = bool:SQL_FetchInt(hQuery, 0);
-    } else {
+    if (!ClientHasDownloadPreference(client, categoryid, bEnabled)) {
         Format(sQuery, sizeof(sQuery),
-                "SELECT enabled FROM categories WHERE categoryid=%d");
+                "SELECT enabled FROM categories WHERE categoryid=%d",
+                categoryid);
         bEnabled = bool:SQL_QuerySingleRowInt(g_hDatabase, sQuery);
     }
-    CloseHandle(hQuery);
     
     return bEnabled;
 }
@@ -199,6 +199,47 @@ public Native_GetClientDownloadPreference(Handle:hPlugin, nParams) {
         categoryid = GetNativeCell(2);
 
     return GetClientDownloadPreference(client, categoryid);
+}
+
+/**
+ * Checks whether or not the client has their own download preference set.
+ * 
+ * @param client            The client to check preferences for.
+ * @param categoryid        The category of files to check for download preferences.
+ * @param value             A cell reference to store an existing preference value.
+ * 
+ * @return                  Boolean determining if a custom download preference is set.
+ *                          (False if using the default preference set by the download category.)
+ */
+bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0) {
+    new sid3 = GetSteamAccountID(client);
+    decl String:sQuery[1024];
+    new Handle:hQuery = INVALID_HANDLE;
+    new bool:bHasRows;
+
+    Format(sQuery, sizeof(sQuery),
+            "SELECT enabled FROM downloadprefs WHERE sid3=%d AND categoryid=%d",
+            sid3, categoryid);
+    hQuery = SQL_Query(g_hDatabase, sQuery);
+    
+    bHasRows = (SQL_GetRowCount(hQuery) > 0);
+    
+    if (bHasRows) {
+        SQL_FetchRow(hQuery);
+        result = bool:SQL_FetchInt(hQuery, 0);
+    }
+    
+    CloseHandle(hQuery);
+    
+    return bHasRows;
+}
+
+public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
+    new client = GetNativeCell(1),
+        categoryid = GetNativeCell(2),
+        result = GetNativeCellRef(3);
+
+    return ClientHasDownloadPreference(client, categoryid, result);
 }
 
 /**
