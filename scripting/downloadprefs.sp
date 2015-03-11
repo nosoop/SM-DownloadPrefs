@@ -10,7 +10,7 @@
 
 #include <sourcemod>
 
-#define PLUGIN_VERSION          "0.2.0"
+#define PLUGIN_VERSION          "0.2.1"
 
 public Plugin:myinfo = {
     name = "Download Preferences",
@@ -23,10 +23,6 @@ public Plugin:myinfo = {
 #define DATABASE_NAME           "downloadprefs"
 
 new Handle:g_hDatabase = INVALID_HANDLE;
-
-public OnPluginStart() {
-    g_hDatabase = GetDatabase();
-}
 
 public OnPluginEnd() {
     CloseHandle(g_hDatabase);
@@ -41,6 +37,8 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
     CreateNative("GetClientDownloadPreference", Native_GetClientDownloadPreference);
     CreateNative("ClientHasDownloadPreference", Native_ClientHasDownloadPreference);
 
+    g_hDatabase = GetDatabase();
+    
     return APLRes_Success;
 }
 
@@ -85,11 +83,20 @@ RegisterClientIP(client) {
 _:RegClientDownloadCategory(const String:category[], const String:description[], bool:enabled = true) {
     new Handle:hQuery = INVALID_HANDLE, iCategoryID;
     decl String:sQuery[1024];
-    Format(sQuery, sizeof(sQuery),
-            "INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, '%s', '%s', '%b')",
-            category, description, enabled);
-    SQL_FastQuery(g_hDatabase, sQuery);
-    
+	
+	Format(sQuery, sizeof(sQuery),
+			"SELECT categoryid FROM categories WHERE categoryname='%s'",
+			category);
+	hQuery = SQL_Query(g_hDatabase, sQuery);
+	
+	if (SQL_GetRowCount(hQuery) == 0) {
+		Format(sQuery, sizeof(sQuery),
+				"INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, '%s', '%s', '%b')",
+				category, description, enabled);
+		SQL_FastQuery(g_hDatabase, sQuery);
+	}
+    CloseHandle(hQuery);
+	
     Format(sQuery, sizeof(sQuery),
             "SELECT categoryid FROM categories WHERE categoryname='%s'",
             category);
@@ -171,7 +178,7 @@ public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
 }
 
 /**
- * Retrieves a client's download preference.
+ * Retrieves a client's download preference.  If non-existent, will return the default setting.
  * A client will keep their existing download preference until a map change or reconnect.
  * 
  * @param client            The client to get preferences for.
