@@ -7,7 +7,6 @@
  */
 
 #pragma semicolon 1
-
 #include <sourcemod>
 
 #define PLUGIN_VERSION			"0.4.0"
@@ -21,7 +20,6 @@ public Plugin:myinfo = {
 }
 
 #define DATABASE_NAME			"downloadprefs" // Database name in config
-
 new Handle:g_hDatabase = INVALID_HANDLE;
 
 new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
@@ -29,6 +27,8 @@ new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
 
 public OnPluginStart() {
 	g_hCDownloadURL = FindConVar("sv_downloadurl");
+	
+	CreateConVar("sm_dprefs_version", PLUGIN_VERSION, _, FCVAR_PLUGIN | FCVAR_NOTIFY);
 
 	// Set redirect downloadurl.  If blank, the transmission of sv_downloadurl to the client is not changed.
 	g_hCDPrefURL = CreateConVar("sm_dprefs_downloadurl", "", "Download URL to send to the client.  See README for details.", FCVAR_PLUGIN | FCVAR_SPONLY);
