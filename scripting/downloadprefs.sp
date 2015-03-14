@@ -307,20 +307,12 @@ Handle:GetDatabase() {
 }
 
 /**
- * Tables to create:
- *
- * CREATE TABLE 'categories' ('categoryid' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'categoryname' TEXT NOT NULL, 'categorydesc' TEXT, 'enabled' BOOLEAN NOT NULL);
- * CREATE TABLE 'downloadprefs' ('sid3' INTEGER NOT NULL, 'categoryid' INTEGER NOT NULL, 'enabled' BOOLEAN NOT NULL);
- * CREATE TABLE 'files' ('categoryid' INTEGER, 'filepath' TEXT PRIMARY KEY NOT NULL);
+ * Flow to check if a download is allowed.
+ * When a client is authorized: -> Send custom virtual fastdl directory data
+ * When a client downloads a file: ->
+ *	  - Get SteamID3 from query string
+ *	  - Get 'categoryid' by 'filepath' in table files (filepath obtained in query string),
+ *	  - Get 'enabled' by 'sid3' and 'category' in downloadprefs,
+ *	  - (If not found, get 'enabled' by 'categoryid' in table categories),
+ *	  - If enabled, allow the download, otherwise redirect / 404.
  */
- 
- /**
-  * Flow to check if a download is allowed.
-  * When a client is authorized: -> Send custom virtual fastdl directory data
-  * When a client downloads a file: ->
-  *	  - Get SteamID3 from query string
-  *	  - Get 'categoryid' by 'filepath' in table files (filepath obtained in query string),
-  *	  - Get 'enabled' by 'sid3' and 'category' in downloadprefs,
-  *	  - (If not found, get 'enabled' by 'categoryid' in table categories),
-  *	  - If enabled, allow the download, otherwise redirect / 404.
-  */
