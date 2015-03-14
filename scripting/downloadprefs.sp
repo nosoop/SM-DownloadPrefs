@@ -10,7 +10,7 @@
 
 #include <sourcemod>
 
-#define PLUGIN_VERSION          "0.2.1"
+#define PLUGIN_VERSION          "0.3.1"
 
 public Plugin:myinfo = {
     name = "Download Preferences",
@@ -20,9 +20,22 @@ public Plugin:myinfo = {
     url = "http://github.com/nosoop/SM-DownloadPrefs"
 }
 
-#define DATABASE_NAME           "downloadprefs"
+#define DATABASE_NAME           "downloadprefs" // Database name in config
 
 new Handle:g_hDatabase = INVALID_HANDLE;
+
+new Handle:g_hCDownloadURL = INVALID_HANDLE; // Handle to sv_downloadurl
+
+new Handle:g_hCDPrefURL = INVALID_HANDLE;
+
+public OnPluginStart() {
+	g_hCDownloadURL = FindConVar("sv_downloadurl");
+
+	// Set redirect downloadurl.  If blank, the transmission of sv_downloadurl to the client is not changed.
+	g_hCDPrefURL = CreateConVar("sm_dprefs_downloadurl", "", "Download URL to send to the client.  See README for details.", FCVAR_PLUGIN | FCVAR_SPONLY);
+
+	AutoExecConfig(true);
+}
 
 public OnPluginEnd() {
     CloseHandle(g_hDatabase);
@@ -48,25 +61,26 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
  */
 public OnClientAuthorized(client, const String:auth[]) {
     if (!IsFakeClient(client)) {
-        RegisterClientIP(client);
+        SendCustomDownloadDirectory(client);
     }
 }
 
-/**
- * Associates a client's SteamID3 with their current IP address.
- * This must be called after the client is authorized.
- */
-RegisterClientIP(client) {
-    decl String:sIPAddr[20], String:sQuery[1024];
-    
-    new iSteamID3 = GetSteamAccountID(client);
-    GetClientIP(client, sIPAddr, sizeof(sIPAddr));
-    
-    Format(sQuery, sizeof(sQuery),
-            "INSERT OR REPLACE INTO clients (sid3, ipaddr, lastconnect) VALUES ( %d, '%s', %d )",
-            iSteamID3, sIPAddr, GetTime());
-    
-    SQL_FastQuery(g_hDatabase, sQuery);
+SendCustomDownloadDirectory(client) {
+	new iSteamID3 = GetSteamAccountID(client);
+	
+	// downloadurl has no trailing slash
+	new String:sClientDownloadURL[256];
+	GetConVarString(g_hCDPrefURL, sClientDownloadURL, sizeof(sClientDownloadURL));
+	
+	if (strlen(sClientDownloadURL) > 0) {
+		new String:sSteamID3[32];
+		IntToString(iSteamID3, sSteamID3, sizeof(sSteamID3));
+			
+		// Replace $STEAMID with client's SteamID3 and transmit to client
+		ReplaceString(sClientDownloadURL, sizeof(sClientDownloadURL), "$STEAMID", sSteamID3);
+
+		SendConVarValue(client, g_hCDownloadURL, sClientDownloadURL);
+	}
 }
 
 /**
@@ -285,16 +299,15 @@ Handle:GetDatabase() {
  * Tables to create:
  *
  * CREATE TABLE 'categories' ('categoryid' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 'categoryname' TEXT NOT NULL, 'categorydesc' TEXT, 'enabled' BOOLEAN NOT NULL);
- * CREATE TABLE 'clients' ('sid3' INTEGER PRIMARY KEY NOT NULL, 'ipaddr' TEXT NOT NULL, 'lastconnect' INTEGER NOT NULL);
  * CREATE TABLE 'downloadprefs' ('sid3' INTEGER NOT NULL, 'categoryid' INTEGER NOT NULL, 'enabled' BOOLEAN NOT NULL);
  * CREATE TABLE 'files' ('categoryid' INTEGER, 'filepath' TEXT PRIMARY KEY NOT NULL);
  */
  
  /**
   * Flow to check if a download is allowed.
-  * When a client is authorized: -> Update IP, SteamID3, lastconnect in table clients
+  * When a client is authorized: -> Send custom virtual fastdl directory data
   * When a client downloads a file: ->
-  *   - Get SteamID3 from the associated IP address in table clients,   (redirect / 404 if not found) (if multiple clients on same IP within short period, take worst case?)
+  *   - Get SteamID3 from query string
   *   - Get 'categoryid' by 'filepath' in table files (filepath obtained in query string),
   *   - Get 'enabled' by 'sid3' and 'category' in downloadprefs,
   *   - (If not found, get 'enabled' by 'categoryid' in table categories),
