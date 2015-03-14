@@ -7,7 +7,7 @@
 	//   - steamid: The player's SteamID
 	
 	// Default settings
-	$dbFile = dirname(__FILE__) . '/clientproxy.sq3';
+	$dbFile = dirname(__FILE__) . '/downloadprefs.sq3';
 	$downloadDir = "http://$_SERVER[HTTP_HOST]/tf";
 	$errorPages = [ "opt-in-required" => NULL, "unspecified-steamid" => NULL, "unspecified-file" => NULL, ];
 	

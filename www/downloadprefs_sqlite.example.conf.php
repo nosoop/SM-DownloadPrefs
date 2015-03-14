@@ -3,7 +3,7 @@
 	// The $DPREFS.php will search for a file named $DPREFS.conf.php, where $DPREFS is the redirection script.
 
 	// Path to database file.
-	$dbFile = dirname(__FILE__) . '/clientproxy.sq3';
+	$dbFile = dirname(__FILE__) . '/downloadprefs.sq3';
 	
 	// Redirected download path, refered to when redirecting the client to an accepted file.
 	// By default it will use http://server.domain/tf
