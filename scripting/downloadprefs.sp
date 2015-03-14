@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.4.1"
+#define PLUGIN_VERSION			"0.5.0"
 
 public Plugin:myinfo = {
 	name = "Download Preferences",
@@ -19,17 +19,32 @@ public Plugin:myinfo = {
 	url = "http://github.com/nosoop/SM-DownloadPrefs"
 }
 
+#define MAX_DOWNLOAD_PREFERENCES 64
+new g_rgiDownloadPrefs[MAX_DOWNLOAD_PREFERENCES],
+	g_nDownloadPrefs;
+
 #define DATABASE_NAME			"downloadprefs" // Database name in config
 new Handle:g_hDatabase = INVALID_HANDLE;
 
 new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
 	Handle:g_hCDPrefURL = INVALID_HANDLE; // sm_dprefs_downloadurl
 
+functag OnDownloadCategoryAdded public(categoryid);
+new Handle:g_hFCategoryAdded = INVALID_HANDLE;
+
 public OnPluginStart() {
+	CreateConVar("sm_dprefs_version", PLUGIN_VERSION, _, FCVAR_PLUGIN | FCVAR_NOTIFY);
+	
+	// Called when a category is added.
+	g_hFCategoryAdded = CreateForward(ET_Ignore, Param_Cell, Param_String);
+	
+	g_nDownloadPrefs = 0;
+	for (new i = 0; i < MAX_DOWNLOAD_PREFERENCES; i++) {
+		g_rgiDownloadPrefs[i] = -1;
+	}
+	
 	g_hCDownloadURL = FindConVar("sv_downloadurl");
 	
-	CreateConVar("sm_dprefs_version", PLUGIN_VERSION, _, FCVAR_PLUGIN | FCVAR_NOTIFY);
-
 	// Set redirect downloadurl.  If blank, the transmission of sv_downloadurl to the client is not changed.
 	g_hCDPrefURL = CreateConVar("sm_dprefs_downloadurl", "", "Download URL to send to the client.  See README for details.", FCVAR_PLUGIN | FCVAR_SPONLY);
 
@@ -48,6 +63,8 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
 	CreateNative("SetClientDownloadPreference", Native_SetClientDownloadPreference);
 	CreateNative("GetClientDownloadPreference", Native_GetClientDownloadPreference);
 	CreateNative("ClientHasDownloadPreference", Native_ClientHasDownloadPreference);
+	CreateNative("GetDownloadCategoryInfo", Native_GetDownloadCategoryInfo);
+	CreateNative("HookDownloadCategoryAdd", Native_HookDownloadCategoryAdd);
 
 	g_hDatabase = GetDatabase();
 	
@@ -98,12 +115,6 @@ public OnClientPostAdminCheck(client) {
  * Registers a group of files to download.
  * Store the category plus description into the database if nonexistent, 
  * returning an ID to the corresponding category.
- * 
- * @param category			The category name to register.
- * @param description		The description associated with the category.
- * @param enabled			The file group is downloaded by default; clients must choose to opt-out.
- * 
- * @return categoryid		The ID of the category.
  */
 _:RegClientDownloadCategory(const String:category[], const String:description[], bool:enabled = true) {
 	new Handle:hQuery = INVALID_HANDLE, iCategoryID;
@@ -132,6 +143,8 @@ _:RegClientDownloadCategory(const String:category[], const String:description[],
 	
 	CloseHandle(hQuery);
 	
+	DownloadCategoryAdded(iCategoryID);
+	
 	return iCategoryID;
 }
 
@@ -147,9 +160,6 @@ public Native_RegClientDownloadCategory(Handle:hPlugin, nParams) {
 
 /**
  * Registers a file to a category.
- * 
- * @param categoryid		The ID of the category to register.
- * @param filepath			The full path of the file to download.
  */
 RegClientDownloadFile(categoryid, const String:filepath[]) {
 	decl String:sQuery[1024];
@@ -170,10 +180,6 @@ public Native_RegClientDownloadFile(Handle:hPlugin, nParams) {
 
 /**
  * Stores the client's download preference.
- * 
- * @param client			The client to set preferences for.
- * @param categoryid		The category of files to set a download preference for.
- * @param download			Whether or not the client downloads this file.
  */
 SetClientDownloadPreference(client, categoryid, bool:enabled) {
 	decl String:sQuery[1024];
@@ -205,12 +211,6 @@ public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
 /**
  * Retrieves a client's download preference.  If non-existent, will return the default setting.
  * A client will keep their existing download preference until a map change or reconnect.
- * 
- * @param client			The client to get preferences for.
- * @param categoryid		The category of files to get a download preference for.
- * 
- * @return					Boolean determining if a client allows downloads from this category,
- *							or the default allow value if the client has not set their own.
  */
 bool:GetClientDownloadPreference(client, categoryid) {
 	decl String:sQuery[1024];
@@ -235,13 +235,6 @@ public Native_GetClientDownloadPreference(Handle:hPlugin, nParams) {
 
 /**
  * Checks whether or not the client has their own download preference set.
- * 
- * @param client			The client to check preferences for.
- * @param categoryid		The category of files to check for download preferences.
- * @param value				A cell reference to store an existing preference value.
- * 
- * @return					Boolean determining if a custom download preference is set.
- *							(False if using the default preference set by the download category.)
  */
 bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0) {
 	new sid3 = GetSteamAccountID(client);
@@ -272,6 +265,80 @@ public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
 		result = GetNativeCellRef(3);
 
 	return ClientHasDownloadPreference(client, categoryid, result);
+}
+
+/**
+ * Gets the description of the download category.
+ */
+bool:GetDownloadCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength) {
+	decl String:sQuery[1024];
+	new Handle:hQuery = INVALID_HANDLE;
+	
+	Format(sQuery, sizeof(sQuery),
+			"SELECT categoryname, categorydesc FROM categories WHERE categoryid=%d",
+			categoryid);
+	hQuery = SQL_Query(g_hDatabase, sQuery);
+	
+	new bool:bHasRows = (SQL_GetRowCount(hQuery) > 0);
+	
+	if (bHasRows) {
+		SQL_FetchRow(hQuery);
+		SQL_FetchString(hQuery, 0, title, maxTitleLength);
+		SQL_FetchString(hQuery, 1, description, maxDescLength);
+	}
+	
+	CloseHandle(hQuery);
+	return bHasRows;
+}
+
+public Native_GetDownloadCategoryInfo(Handle:hPlugin, nParams) {
+	new categoryid = GetNativeCell(1),
+		maxTitleLength = GetNativeCell(3),
+		maxDescLength = GetNativeCell(5);
+	
+	new String:title[maxTitleLength],
+		String:description[maxDescLength];
+	
+	new bool:bResult = GetDownloadCategoryInfo(categoryid, title, maxTitleLength, description, maxDescLength);
+	
+	SetNativeString(2, title, maxTitleLength);
+	SetNativeString(3, description, maxDescLength);
+	
+	return bResult;
+}
+
+/**
+ * Private forward that is called when a download category is added.
+ */
+public Native_HookDownloadCategoryAdd(Handle:hPlugin, nParams) {
+	new OnDownloadCategoryAdded:listeningFunction = GetNativeCell(1);
+	AddToForward(g_hFCategoryAdded, hPlugin, listeningFunction);
+	
+	// Call for already existing categories
+	for (new i = 0; i < g_nDownloadPrefs; i++) {
+		new category = g_rgiDownloadPrefs[i];
+		if (category > -1) {
+			Call_StartFunction(hPlugin, listeningFunction);
+			Call_PushCell(category);
+			Call_Finish();
+		}
+	}
+}
+
+DownloadCategoryAdded(categoryid) {
+	new bool:bFound = false;
+	
+	for (new i = 0; i < g_nDownloadPrefs; i++) {
+		bFound |= (categoryid == g_rgiDownloadPrefs[i]);
+	}
+	
+	if (!bFound && g_nDownloadPrefs < MAX_DOWNLOAD_PREFERENCES) {
+		g_rgiDownloadPrefs[g_nDownloadPrefs++] = categoryid;
+	}
+
+	Call_StartForward(g_hFCategoryAdded);
+	Call_PushCell(categoryid);
+	Call_Finish();
 }
 
 /**
