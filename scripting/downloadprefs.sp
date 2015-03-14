@@ -10,7 +10,7 @@
 
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.3.1"
+#define PLUGIN_VERSION			"0.4.0"
 
 public Plugin:myinfo = {
 	name = "Download Preferences",
@@ -24,9 +24,8 @@ public Plugin:myinfo = {
 
 new Handle:g_hDatabase = INVALID_HANDLE;
 
-new Handle:g_hCDownloadURL = INVALID_HANDLE; // Handle to sv_downloadurl
-
-new Handle:g_hCDPrefURL = INVALID_HANDLE;
+new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
+	Handle:g_hCDPrefURL = INVALID_HANDLE; // sm_dprefs_downloadurl
 
 public OnPluginStart() {
 	g_hCDownloadURL = FindConVar("sv_downloadurl");
@@ -56,16 +55,16 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
 }
 
 /**
- * Stores the SteamID (to keep track of the client) plus the IP address to track the browser.
- * Also stores the current time in the event a database pruning is desirable.
+ * Sends a custom download URL when the client is connecting.
+ * This occurs every time the client reconnects (via map change, etc.)
  */
 public OnClientAuthorized(client, const String:auth[]) {
 	if (!IsFakeClient(client)) {
-		SendCustomDownloadDirectory(client);
+		SendCustomDownloadURL(client);
 	}
 }
 
-SendCustomDownloadDirectory(client) {
+SendCustomDownloadURL(client) {
 	new iSteamID3 = GetSteamAccountID(client);
 	
 	// downloadurl has no trailing slash
@@ -81,6 +80,16 @@ SendCustomDownloadDirectory(client) {
 
 		SendConVarValue(client, g_hCDownloadURL, sClientDownloadURL);
 	}
+}
+
+/**
+ * Resets the download URL to the server-supplied value once the client is fully in-game.
+ * This occurs after the client has performed any fast download requests.
+ */
+public OnClientPostAdminCheck(client) {
+	new String:sDefaultDownloadURL[256];
+	GetConVarString(g_hCDownloadURL, sDefaultDownloadURL, sizeof(sDefaultDownloadURL));
+	SendConVarValue(client, g_hCDownloadURL, sDefaultDownloadURL);
 }
 
 /**
