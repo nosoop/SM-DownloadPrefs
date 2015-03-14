@@ -20,7 +20,7 @@ public __pl_downloadprefs_SetNTVOptional() {
     MarkNativeAsOptional("GetClientDownloadPreference");
     MarkNativeAsOptional("ClientHasDownloadPreference");
     MarkNativeAsOptional("GetDownloadCategoryInfo");
-    MarkNativeAsOptional("HookDownloadCategoryAdd");
+    MarkNativeAsOptional("GetLoadedDownloadCategories");
 }
 
 /**
@@ -91,7 +91,8 @@ native bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0);
 native bool:GetDownloadCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength);
 
 /**
- * Private forward that is called when a download category is added.
+ * Gets an array containing loaded categoryids.
+ *
+ * @return                  The number of categories loaded.
  */
-functag OnDownloadCategoryAdded public(categoryid);
-native HookDownloadCategoryAdd(OnDownloadCategoryAdded:handler);
+native _:GetLoadedDownloadCategories(categoryids[], size, start = 0);

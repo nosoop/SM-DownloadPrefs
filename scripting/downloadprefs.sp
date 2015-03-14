@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.5.0"
+#define PLUGIN_VERSION			"0.6.0"
 
 public Plugin:myinfo = {
 	name = "Download Preferences",
@@ -29,14 +29,9 @@ new Handle:g_hDatabase = INVALID_HANDLE;
 new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
 	Handle:g_hCDPrefURL = INVALID_HANDLE; // sm_dprefs_downloadurl
 
-functag OnDownloadCategoryAdded public(categoryid);
-new Handle:g_hFCategoryAdded = INVALID_HANDLE;
 
 public OnPluginStart() {
 	CreateConVar("sm_dprefs_version", PLUGIN_VERSION, _, FCVAR_PLUGIN | FCVAR_NOTIFY);
-	
-	// Called when a category is added.
-	g_hFCategoryAdded = CreateForward(ET_Ignore, Param_Cell, Param_String);
 	
 	g_nDownloadPrefs = 0;
 	for (new i = 0; i < MAX_DOWNLOAD_PREFERENCES; i++) {
@@ -64,7 +59,7 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
 	CreateNative("GetClientDownloadPreference", Native_GetClientDownloadPreference);
 	CreateNative("ClientHasDownloadPreference", Native_ClientHasDownloadPreference);
 	CreateNative("GetDownloadCategoryInfo", Native_GetDownloadCategoryInfo);
-	CreateNative("HookDownloadCategoryAdd", Native_HookDownloadCategoryAdd);
+	CreateNative("GetLoadedDownloadCategories", Native_GetLoadedDownloadCategories);
 
 	g_hDatabase = GetDatabase();
 	
@@ -307,24 +302,6 @@ public Native_GetDownloadCategoryInfo(Handle:hPlugin, nParams) {
 	return bResult;
 }
 
-/**
- * Private forward that is called when a download category is added.
- */
-public Native_HookDownloadCategoryAdd(Handle:hPlugin, nParams) {
-	new OnDownloadCategoryAdded:listeningFunction = GetNativeCell(1);
-	AddToForward(g_hFCategoryAdded, hPlugin, listeningFunction);
-	
-	// Call for already existing categories
-	for (new i = 0; i < g_nDownloadPrefs; i++) {
-		new category = g_rgiDownloadPrefs[i];
-		if (category > -1) {
-			Call_StartFunction(hPlugin, listeningFunction);
-			Call_PushCell(category);
-			Call_Finish();
-		}
-	}
-}
-
 DownloadCategoryAdded(categoryid) {
 	new bool:bFound = false;
 	
@@ -335,10 +312,24 @@ DownloadCategoryAdded(categoryid) {
 	if (!bFound && g_nDownloadPrefs < MAX_DOWNLOAD_PREFERENCES) {
 		g_rgiDownloadPrefs[g_nDownloadPrefs++] = categoryid;
 	}
+}
 
-	Call_StartForward(g_hFCategoryAdded);
-	Call_PushCell(categoryid);
-	Call_Finish();
+public Native_GetLoadedDownloadCategories(Handle:hPlugin, nParams) {
+	new size = GetNativeCell(2),
+		start = GetNativeCell(3),
+		nCategories;
+	
+	new categoryids[size];
+	
+	for (new i = start; i < g_nDownloadPrefs; i++) {
+		if (g_rgiDownloadPrefs[i] != -1) {
+			categoryids[nCategories++] = g_rgiDownloadPrefs[i];
+		}
+	}
+	
+	SetNativeArray(1, categoryids, size);
+	
+	return nCategories;
 }
 
 /**
