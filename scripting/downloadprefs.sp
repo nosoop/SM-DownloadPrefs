@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.4.0"
+#define PLUGIN_VERSION			"0.4.1"
 
 public Plugin:myinfo = {
 	name = "Download Preferences",
@@ -87,9 +87,11 @@ SendCustomDownloadURL(client) {
  * This occurs after the client has performed any fast download requests.
  */
 public OnClientPostAdminCheck(client) {
-	new String:sDefaultDownloadURL[256];
-	GetConVarString(g_hCDownloadURL, sDefaultDownloadURL, sizeof(sDefaultDownloadURL));
-	SendConVarValue(client, g_hCDownloadURL, sDefaultDownloadURL);
+	if (!IsFakeClient(client)) {
+		new String:sDefaultDownloadURL[256];
+		GetConVarString(g_hCDownloadURL, sDefaultDownloadURL, sizeof(sDefaultDownloadURL));
+		SendConVarValue(client, g_hCDownloadURL, sDefaultDownloadURL);
+	}
 }
 
 /**
