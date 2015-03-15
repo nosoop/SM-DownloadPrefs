@@ -14,6 +14,10 @@
 		"unspecified-file" => NULL,
 	];
 	
+	// Optionally add a secret that the query has to contain.
+	// Setting it to NULL bypasses the check.
+	$secret = NULL;
+	
 	// Read clientprefs settings from an sqlite database.
 	$dbFile = dirname(__FILE__) . '/downloadprefs.sq3';
 	require_once(dirname(__FILE__) . '/dprefs_sq3.php');

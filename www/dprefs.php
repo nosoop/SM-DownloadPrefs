@@ -13,6 +13,7 @@
 	$prefsFilter = new DefaultDownloadFilter();
 	$downloadDir = "http://$_SERVER[HTTP_HOST]/tf";
 	$errorPages = [ "opt-in-required" => NULL, "unspecified-steamid" => NULL, "unspecified-file" => NULL, ];
+	$secret = NULL;
 	
 	// Any values that exist in downloadprefs_sqlite.conf.php will overwrite the preferences above.
 	$configFile = dirname(__FILE__) . '/' . basename(__FILE__, '.php') . '.conf.php';
@@ -23,6 +24,15 @@
 
 <?php
 	$file = html_entity_decode($_REQUEST['file']);
+	
+	// Perform extra optional check to ensure that the redirection is done internally
+	if (!is_null($secret)) {
+		$querySecret = $_REQUEST['secret'];
+		if (is_null($querySecret) || strcmp($secret, $querySecret) <> 0) {
+			header("HTTP/1.1 403 Forbidden");
+			return;
+		}
+	}
 	
 	if (!empty($file)) {
 		// Queries database for non-bzipped version; easier than adding a check to test to add nonexistent .bz2 extension.
