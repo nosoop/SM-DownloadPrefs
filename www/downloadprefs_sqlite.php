@@ -61,7 +61,7 @@
 			}
 		} else {
 			// Client has not specified a SteamID and accessed PHP page directly -- block download.
-			header("HTTP/1.1 403 Forbidden");
+			header("HTTP/1.1 401 Unauthorized");
 			
 			$errorPage = $errorPages['unspecified-steamid'];
 			if (!is_null($errorPage)) {
@@ -71,7 +71,7 @@
 		}
 	} else {
 		// Client did not pass a file.
-		header("HTTP/1.1 403 Forbidden");
+		header("HTTP/1.1 404 Not Found");
 		
 		$errorPage = $errorPages['unspecified-file'];
 		if (!is_null($errorPage)) {
