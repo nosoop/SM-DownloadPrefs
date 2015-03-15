@@ -92,7 +92,11 @@ native bool:GetDownloadCategoryInfo(categoryid, String:title[], maxTitleLength, 
 
 /**
  * Gets an array containing loaded categoryids.
- *
+ * 
+ * @param categoryids       An array containing a list of categories loaded by downloadprefs
+ * @param size              The maximum size of the array
+ * @param start             The index of the array to start with.
+ * 
  * @return                  The number of categories loaded.
  */
 native _:GetLoadedDownloadCategories(categoryids[], size, start = 0);
