@@ -9,8 +9,7 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.6.1"
-
+#define PLUGIN_VERSION			"0.6.2"
 public Plugin:myinfo = {
 	name = "Download Preferences",
 	author = "nosoop",
@@ -23,15 +22,19 @@ public Plugin:myinfo = {
 #define MAX_SQL_QUERY_LENGTH 512
 #define MAX_URL_LENGTH 256
 
+// List of preferences that have been registered in this session
 #define MAX_DOWNLOAD_PREFERENCES 64
 new g_rgiDownloadPrefs[MAX_DOWNLOAD_PREFERENCES], g_nDownloadPrefs;
 
-#define DATABASE_NAME			"downloadprefs" // Database name in config
+// Database name and related handle
+#define DATABASE_NAME "downloadprefs"
 new Handle:g_hDatabase = INVALID_HANDLE;
 
 // ConVar handles
 new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
 	Handle:g_hCDPrefURL = INVALID_HANDLE; // sm_dprefs_downloadurl
+
+// TODO perform plugin / category validation
 
 public OnPluginStart() {
 	CreateConVar("sm_dprefs_version", PLUGIN_VERSION, _, FCVAR_PLUGIN | FCVAR_NOTIFY);
@@ -41,9 +44,8 @@ public OnPluginStart() {
 		g_rgiDownloadPrefs[i] = INVALID_DOWNLOAD_CATEGORY;
 	}
 	
+	// Hook to set redirect downloadurl.  If blank, the transmission of sv_downloadurl to the client is not changed.
 	g_hCDownloadURL = FindConVar("sv_downloadurl");
-	
-	// Set redirect downloadurl.  If blank, the transmission of sv_downloadurl to the client is not changed.
 	g_hCDPrefURL = CreateConVar("sm_dprefs_downloadurl", "", "Download URL to send to the client.  See README for details.", FCVAR_PLUGIN | FCVAR_SPONLY);
 
 	AutoExecConfig(true);
@@ -120,8 +122,7 @@ _:RegClientDownloadCategory(const String:category[], const String:description[],
 	
 	// Category does not exist; create it.
 	if (SQL_GetRowCount(hQuery) == 0) {
-		Format(sQuery, sizeof(sQuery),
-				"INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, '%s', '%s', '%b')",
+		Format(sQuery, sizeof(sQuery), "INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, '%s', '%s', '%b')",
 				category, description, enabled);
 		SQL_FastQuery(g_hDatabase, sQuery);
 	}
@@ -227,9 +228,7 @@ bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0) {
 			sid3, categoryid);
 	hQuery = SQL_Query(g_hDatabase, sQuery);
 	
-	bHasRows = (SQL_GetRowCount(hQuery) > 0);
-	
-	if (bHasRows) {
+	if ((bHasRows = (SQL_GetRowCount(hQuery) > 0))) {
 		SQL_FetchRow(hQuery);
 		result = bool:SQL_FetchInt(hQuery, 0);
 	}
@@ -250,14 +249,13 @@ public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
 bool:GetDownloadCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength) {
 	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
 	new Handle:hQuery = INVALID_HANDLE;
+	new bool:bHasRows;
 	
 	Format(sQuery, sizeof(sQuery), "SELECT categoryname, categorydesc FROM categories WHERE categoryid=%d",
 			categoryid);
 	hQuery = SQL_Query(g_hDatabase, sQuery);
 	
-	new bool:bHasRows = (SQL_GetRowCount(hQuery) > 0);
-	
-	if (bHasRows) {
+	if ((bHasRows = (SQL_GetRowCount(hQuery) > 0))) {
 		SQL_FetchRow(hQuery);
 		SQL_FetchString(hQuery, 0, title, maxTitleLength);
 		SQL_FetchString(hQuery, 1, description, maxDescLength);

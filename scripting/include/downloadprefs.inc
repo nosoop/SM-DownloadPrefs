@@ -78,6 +78,10 @@ native bool:GetClientDownloadPreference(client, categoryid);
 native bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0);
 
 /**
+ * Methods below should be considered unstable.
+ */
+
+/**
  * Gets the name and description of a download preference.
  *
  * @param categoryid        The category to get a name / description of.
