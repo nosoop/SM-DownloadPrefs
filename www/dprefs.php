@@ -7,7 +7,10 @@
 	//   - steamid: The player's SteamID
 	
 	// Default settings
-	$dbFile = dirname(__FILE__) . '/downloadprefs.sq3';
+	interface DownloadFilter { public function getFilePreference($steamid, $filepath); }
+	class DefaultDownloadFilter implements DownloadFilter { public function getFilePreference($steamid, $filepath) { return true; } }
+	
+	$prefsFilter = new DefaultDownloadFilter();
 	$downloadDir = "http://$_SERVER[HTTP_HOST]/tf";
 	$errorPages = [ "opt-in-required" => NULL, "unspecified-steamid" => NULL, "unspecified-file" => NULL, ];
 	
@@ -25,8 +28,6 @@
 		// Queries database for non-bzipped version; easier than adding a check to test to add nonexistent .bz2 extension.
 		$filenobzip = str_replace(".bz2", "", $file);
 		
-		$db = new SQLite3($dbFile);
-		
 		/**
 		 * $category might not exist if the file is not registered -- allow download anyways.
 		 * $enabled may not exist if the client has no preference set -- default to category.
@@ -35,17 +36,7 @@
 		if (isset($_REQUEST['steamid'])) {
 			$sid3 = filter_var($_REQUEST['steamid'], FILTER_VALIDATE_INT);
 			
-			$category = $db->querySingle('SELECT categoryid FROM files WHERE filepath="'.SQLite3::escapeString($filenobzip).'"');
-			
-			$enabled = $db->querySingle('SELECT enabled FROM downloadprefs WHERE sid3="'.$sid3.'" AND categoryid='.SQLite3::escapeString($category).'');
-			if (is_null($enabled)) {
-				$enabled = $db->querySingle('SELECT enabled FROM categories WHERE categoryid='.$category);
-			}
-			
-			$db->close();
-			
-			// If the file is not registered or client did not set a custom preference, then allow.
-			if (is_null($category) || is_null($enabled) || $enabled == 1) {
+			if ($prefsFilter->getFilePreference($sid3, $filenobzip)) {
 				header("HTTP/1.1 307 Temporary Redirect");
 				header("Location: $downloadDir/$file" );
 				return;

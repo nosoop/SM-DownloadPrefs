@@ -1,9 +1,6 @@
 <?php
 	// Custom configuration file for downloadprefs.
 	// The $DPREFS.php will search for a file named $DPREFS.conf.php, where $DPREFS is the redirection script.
-
-	// Path to database file.
-	$dbFile = dirname(__FILE__) . '/downloadprefs.sq3';
 	
 	// Redirected download path, refered to when redirecting the client to an accepted file.
 	// By default it will use http://server.domain/tf
@@ -16,4 +13,9 @@
 		"unspecified-steamid" => NULL,
 		"unspecified-file" => NULL,
 	];
+	
+	// Read clientprefs settings from an sqlite database.
+	$dbFile = dirname(__FILE__) . '/downloadprefs.sq3';
+	require_once(dirname(__FILE__) . '/dprefs_sq3.php');
+	$prefsFilter = new SQLiteDownloadFilter($dbFile);
 ?>
