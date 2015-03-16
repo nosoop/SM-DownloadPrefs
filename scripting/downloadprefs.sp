@@ -60,18 +60,21 @@ public OnPluginEnd() {
 
 public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMaxErrors) {
 	RegPluginLibrary("downloadprefs");
+	
 	CreateNative("RegClientDownloadCategory", Native_RegClientDownloadCategory);
 	CreateNative("RegClientDownloadFile", Native_RegClientDownloadFile);
 	CreateNative("SetClientDownloadPreference", Native_SetClientDownloadPreference);
 	CreateNative("GetClientDownloadPreference", Native_GetClientDownloadPreference);
 	CreateNative("ClientHasDownloadPreference", Native_ClientHasDownloadPreference);
 	
-	// Raw accses methods
-	CreateNative("RawCategoryInfo", Native_RawCategoryInfo);
-	CreateNative("GetActiveCategories", Native_GetActiveCategories);
+	// Raw access methods
 	CreateNative("SetRawDownloadPreference", Native_SetRawDownloadPreference);
 	CreateNative("GetRawDownloadPreference", Native_GetRawDownloadPreference);
 	CreateNative("HasRawDownloadPreference", Native_HasRawDownloadPreference);
+	
+	// Unstable methods
+	CreateNative("RawCategoryInfo", Native_RawCategoryInfo);
+	CreateNative("GetActiveCategories", Native_GetActiveCategories);
 	CreateNative("CategoryToIdentifier", Native_CategoryToIdentifier);
 
 	g_hDatabase = GetDatabase();

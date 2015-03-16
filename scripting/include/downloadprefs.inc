@@ -19,8 +19,16 @@ public __pl_downloadprefs_SetNTVOptional() {
     MarkNativeAsOptional("SetClientDownloadPreference");
     MarkNativeAsOptional("GetClientDownloadPreference");
     MarkNativeAsOptional("ClientHasDownloadPreference");
-    MarkNativeAsOptional("GetDownloadCategoryInfo");
-    MarkNativeAsOptional("GetLoadedDownloadCategories");
+	
+	// Raw access methods
+    MarkNativeAsOptional("SetRawDownloadPreference");
+    MarkNativeAsOptional("GetRawDownloadPreference");
+    MarkNativeAsOptional("HasRawDownloadPreference");
+	
+	// Unstable
+    MarkNativeAsOptional("RawCategoryInfo");
+    MarkNativeAsOptional("GetActiveCategories");
+    MarkNativeAsOptional("CategoryToIdentifier");
 }
 
 /**
