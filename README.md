@@ -2,7 +2,11 @@
 A SourceMod library allowing clients to pick and choose their downloads.
 
 Provides a bunch of methods to store and retrieve preferences for groups of files that are expected to be downloaded across maps.
-Combined with a PHP script to read preferences for clients and a rewrite rule in the HTTPD of choice, this allows a web server to prevent clients from downloading files that they do not want.
+
+# How it works
+1.  Player joins server.
+2.  As the user connects, the server sends the client a value of `sv_downloadurl` that contains their account ID.
+3.  The request the client makes using their custom `sv_downloadurl` value is passed to a script that determines whether or not the client can access the file.
 
 ## How to Set Up
 1.  Ensure you have PHP and an appropriate database driver installed on your web server.
@@ -12,7 +16,7 @@ Combined with a PHP script to read preferences for clients and a rewrite rule in
 5.  Copy the `$SOMEPLACE/dprefs.example.conf.php` file to `$SOMEPLACE/dprefs.conf.php` and change the values in the file where appropriate.  If you renamed `dprefs.php` to a different filename, just change the config file to match.
 6.  Compile the source for and install the `downloadprefs.smx` plugin file.  Enable it and modify `cfg/sourcemod/plugin.downloadprefs.cfg` to set `sm_dprefs_downloadurl` to your redirecting URL.
 7.  Add plugins that support the `downloadprefs` library.  All zero of them, publicly.
-8.  Enjoy letting people choose their downloads.  (Well, it would be helpful if you also compiled and installed `downloadprefs_menu.smx`, provided you don't have a plugin to automatically handle it.)
+8.  Enjoy letting people choose their downloads.  (Well, it would be helpful if you also compiled and installed `downloadprefs_menu.smx`, considering the zero public plugins available at the moment.)
 
 Lost?  See an [example configuration](https://github.com/nosoop/SM-DownloadPrefs/wiki/Sample-Configuration).
 
