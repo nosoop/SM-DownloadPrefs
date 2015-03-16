@@ -32,50 +32,71 @@ public __pl_downloadprefs_SetNTVOptional() {
  * @param description       The description associated with the category.
  * @param enabled           The file group is downloaded by default; clients must choose to opt-out.
  * 
- * @return categoryid       The ID of the category.
+ * @return id               A plugin-granted identifier for the category.
  */
 native _:RegClientDownloadCategory(const String:category[], const String:description[], bool:enabled = true);
 
 /**
  * Registers a file to a category.
  * 
- * @param categoryid        The ID of the category to register.
+ * @param id                The ID of the category to register.
  * @param filepath          The full path of the file to download.
  */
-native RegClientDownloadFile(categoryid, const String:filepath[]);
+native RegClientDownloadFile(id, const String:filepath[]);
 
 /**
  * Stores the client's download preference.
  * 
  * @param client            The client to set preferences for.
- * @param categoryid        The category of files to set a download preference for.
+ * @param id                The category of files to set a download preference for.
  * @param download          Whether or not the client downloads this file.
  */
-native SetClientDownloadPreference(client, categoryid, bool:enabled);
+native SetClientDownloadPreference(client, id, bool:enabled);
 
 /**
  * Retrieves a client's download preference.
  * A client will keep their existing download preference until a map change or reconnect.
  * 
  * @param client            The client to get preferences for.
- * @param categoryid        The category of files to get a download preference for.
+ * @param id                The category of files to get a download preference for.
  * 
  * @return                  Boolean determining if a client allows downloads from this category,
  *                          or the default allow value if the client has not set their own.
  */
-native bool:GetClientDownloadPreference(client, categoryid);
+native bool:GetClientDownloadPreference(client, id);
 
 /**
- * Checks whether or not the client has their own download preference set.
+ * Checks whether or not the client has their own download preference set for a category.
  * 
  * @param client            The client to check preferences for.
- * @param categoryid        The category of files to check for download preferences.
+ * @param id                The category of files to check for download preferences.
  * @param value             A cell reference to store an existing preference value.
  * 
  * @return                  Boolean determining if a custom download preference is set.
  *                          (False if using the default preference set by the download category.)
  */
-native bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0);
+native bool:ClientHasDownloadPreference(client, id, &any:result = 0);
+
+/**
+ * Raw accessor functions below.
+ * They have no checks for steamid / categoryid, are dependent on numbered categories in the database, and are not cached.
+ * Be careful!
+ */
+
+/**
+ * Sets a player's preference of a category by Steam account number.
+ */
+native SetRawDownloadPreference(steamid, categoryid, bool:enabled);
+
+/**
+ * Gets a player's preference of a category by Steam account number.
+ */
+native bool:GetRawDownloadPreference(steamid, categoryid);
+
+/**
+ * Checks whether or not the Steam account has their own download preference set for a category.
+ */
+native bool:HasRawDownloadPreference(steamid, categoryid, &any:result = 0);
 
 /**
  * Methods below should be considered unstable.
@@ -92,15 +113,20 @@ native bool:ClientHasDownloadPreference(client, categoryid, &any:result = 0);
  *
  * @return                  Whether or not the category exists.
  */
-native bool:GetDownloadCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength);
+native bool:RawCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength);
 
 /**
  * Gets an array containing loaded categoryids.
  * 
- * @param categoryids       An array containing a list of categories loaded by downloadprefs
+ * @param categoryids       An array containing a list of categories loaded by downloadprefs.
  * @param size              The maximum size of the array
  * @param start             The index of the array to start with.
  * 
  * @return                  The number of categories loaded.
  */
-native _:GetLoadedDownloadCategories(categoryids[], size, start = 0);
+native _:GetActiveCategories(categoryids[], size, start = 0);
+
+/**
+ * Converts a categoryid to a plugin-granted identifier.
+ */
+native _:CategoryToIdentifier(categoryid);

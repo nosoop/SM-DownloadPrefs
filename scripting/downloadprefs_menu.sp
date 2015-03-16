@@ -12,7 +12,7 @@
 #undef REQUIRE_PLUGIN
 #include <downloadprefs>
 
-#define PLUGIN_VERSION          "0.1.0"     // Plugin version.
+#define PLUGIN_VERSION          "0.2.0"     // Plugin version.
 
 public Plugin:myinfo = {
     name = "Download Preferences Client Menu",
@@ -21,6 +21,10 @@ public Plugin:myinfo = {
     version = PLUGIN_VERSION,
     url = "http://github.com/nosoop/SM-DownloadPrefs"
 }
+
+/**
+ * WARNING: Total hackjob below.
+ */
 
 new bool:g_bDPrefsLoaded = false;
 
@@ -35,15 +39,15 @@ public Action:ConCmd_OpenDownloadPrefMenu(iClient, nArgs) {
 	}
 	
 	new category[128];
-	new size = GetLoadedDownloadCategories(category, sizeof(category));
+	new size = GetActiveCategories(category, sizeof(category));
 	
 	new Handle:hMenu = CreateMenu(MenuHandler_DownloadPref, MENU_ACTIONS_ALL);
 	SetMenuTitle(hMenu, "Download Preferences");
 	
 	new String:title[128], String:desc[1], String:id[4], String:display[64];
 	for (new i = 0; i < size; i++) {
-		if (GetDownloadCategoryInfo(category[i], title, sizeof(title), desc, sizeof(desc))) {
-			new bool:bPreference = GetClientDownloadPreference(iClient, category[i]);
+		if (RawCategoryInfo(category[i], title, sizeof(title), desc, sizeof(desc))) {
+			new bool:bPreference = GetClientDownloadPreference(iClient, CategoryToIdentifier(category[i]));
 			
 			Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : " ", title);
 			IntToString(category[i], id, sizeof(id));
@@ -64,17 +68,17 @@ public MenuHandler_DownloadPref(Handle:hMenu, MenuAction:iAction, param1, param2
 	}
 
 	decl String:sCategory[4];
-	new String:title[128], String:desc[1], String:id[4], String:display[64];
+	new String:title[128], String:desc[1], String:display[64];
 	
 	// This stuff's horribly inefficent, but it'll have to do for now.
 	switch (iAction) {
 		case MenuAction_Select: {
 			new iClient = param1, item = param2;
 			GetMenuItem(hMenu, item, sCategory, sizeof(sCategory));
-			new category = StringToInt(sCategory);
+			new cid = CategoryToIdentifier(StringToInt(sCategory));
 			
-			new bool:bPreference = GetClientDownloadPreference(iClient, category);
-			SetClientDownloadPreference(iClient, category, !bPreference);
+			new bool:bPreference = GetClientDownloadPreference(iClient, cid);
+			SetClientDownloadPreference(iClient, cid, !bPreference);
 			
 			DisplayMenu(hMenu, iClient, 10);
 		}
@@ -83,11 +87,9 @@ public MenuHandler_DownloadPref(Handle:hMenu, MenuAction:iAction, param1, param2
 			GetMenuItem(hMenu, item, sCategory, sizeof(sCategory));
 			new category = StringToInt(sCategory);
 			
-			if (GetDownloadCategoryInfo(category, title, sizeof(title), desc, sizeof(desc))) {
-				new bool:bPreference = GetClientDownloadPreference(iClient, category);
-				
+			if (RawCategoryInfo(category, title, sizeof(title), desc, sizeof(desc))) {
+				new bool:bPreference = GetClientDownloadPreference(iClient, CategoryToIdentifier(category));
 				Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : " ", title);
-				IntToString(category, id, sizeof(id));
 				
 				return RedrawMenuItem(display);
 			}
