@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.7.0"
+#define PLUGIN_VERSION			"0.7.1"
 public Plugin:myinfo = {
 	name = "Download Preferences",
 	author = "nosoop",
@@ -128,20 +128,30 @@ _:RegClientDownloadCategory(const String:category[], const String:description[],
 	new Handle:hQuery = INVALID_HANDLE, categoryid;
 	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
 	
+	new String:safeCategory[128];
+	SQL_EscapeString(g_hDatabase, category, safeCategory, sizeof(safeCategory));
+	
+	// TODO Proper fix for query sanitization and abstraction
 	Format(sQuery, sizeof(sQuery), "SELECT categoryid FROM categories WHERE categoryname='%s'",
-			category);
+			safeCategory);
 	hQuery = SQL_Query(g_hDatabase, sQuery);
 	
 	// Category does not exist; create it.
-	if (SQL_GetRowCount(hQuery) == 0) {
-		Format(sQuery, sizeof(sQuery), "INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, '%s', '%s', '%b')",
-				category, description, enabled);
-		SQL_FastQuery(g_hDatabase, sQuery);
+	if (SQL_GetRowCount(hQuery) == 0 && CloseHandle(hQuery)) {
+		new String:error[4];
+		new Handle:hStmt = SQL_PrepareQuery(g_hDatabase,
+				"INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, ?, ?, ?)",
+				error, sizeof(error));
+		
+		SQL_BindParamString(hStmt, 0, category, false);
+		SQL_BindParamString(hStmt, 1, description, false);
+		SQL_BindParamInt(hStmt, 2, enabled);
+		SQL_Execute(hStmt);
+		CloseHandle(hStmt);
 	}
-	CloseHandle(hQuery);
 	
 	Format(sQuery, sizeof(sQuery), "SELECT categoryid FROM categories WHERE categoryname='%s'",
-			category);
+			safeCategory);
 	hQuery = SQL_Query(g_hDatabase, sQuery);
 	SQL_FetchRow(hQuery);
 	categoryid = SQL_FetchInt(hQuery, 0);
