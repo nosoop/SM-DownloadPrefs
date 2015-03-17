@@ -1,0 +1,21 @@
+# Sample configuration for downloadprefs_loader
+# This config is the same one used at pikatf2.serverpit.com:27015 as of 2015/03/17
+
+# Categories are defined as follows:
+# <two hyphens> <space> <category title> <category description>
+
+# Files must be available in the server's /tf/ directory to be inserted into the list
+
+-- Airshot Sounds:Sounds played for all players when someone dies to an airshot.
+sound/pikapoo/airshat/AIRPORN.mp3
+sound/pikapoo/airshat/murica.mp3
+sound/pikapoo/airshat/rulesofnature.mp3
+sound/pikapoo/airshat/ssx_big_air_bonus.mp3
+sound/pikapoo/airshat/wombocombo.mp3
+
+-- Spray Sound Replacement:Because fart noises are the epitome of maturity.
+sound/pikapoo/fart.wav
+
+-- Goomba Stomp Sounds:Goomba Stomp isn't used often.
+sound/goomba/rebound.wav
+sound/goomba/stomp.wav
