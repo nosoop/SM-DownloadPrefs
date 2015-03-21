@@ -12,7 +12,7 @@
 #include <downloadprefs>
 #define REQUIRE_EXTENSIONS
 
-#define PLUGIN_VERSION			"0.0.1"		// Plugin version.
+#define PLUGIN_VERSION			"0.0.2"		// Plugin version.
 public Plugin:myinfo = {
 	name = "Download Preferences Loader",
 	author = "nosoop",
@@ -31,6 +31,7 @@ public OnPluginStart() {
 }
 
 public Action:ConCmd_ReloadCategories(client, nArgs) {
+	LoadCategories();
 	PrintToChat(client, "[SM] The download preference file has been reloaded.");
 	return Plugin_Handled;
 }
