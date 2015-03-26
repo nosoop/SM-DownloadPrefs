@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.7.1"
+#define PLUGIN_VERSION			"0.7.2"
 public Plugin:myinfo = {
 	name = "Download Preferences",
 	author = "nosoop",
@@ -18,14 +18,27 @@ public Plugin:myinfo = {
 	url = "http://github.com/nosoop/SM-DownloadPrefs"
 }
 
-#define INVALID_DPREFS_ID -1
-#define INVALID_DOWNLOAD_CATEGORY -1
+#define INVALID_DPREFS_ID -1 // Invalid external identifier (what plugins use to communicate with the library)
+#define INVALID_DOWNLOAD_CATEGORY -1 // Invalid internal identifier (what the library uses to communicate with the backend)
 #define MAX_SQL_QUERY_LENGTH 512
 #define MAX_URL_LENGTH 256
 
+enum DownloadPrefsAccess {
+	DownloadPrefsAccess_Public,
+	DownloadPrefsAccess_Protected,
+	DownloadPrefsAccess_Private,
+}
+
+enum CategorySettings {
+	DCS_CategoryIdentifier = 0,
+	DCS_Owner,
+	DCS_AccessLevel,
+	CATEGORYSETTINGS_SIZE
+}
+
 // List of categories that have been registered in this session
 #define MAX_DOWNLOAD_PREFERENCES 64
-new g_rgiCategories[MAX_DOWNLOAD_PREFERENCES], g_nDownloadPrefs;
+new g_rgiCategories[MAX_DOWNLOAD_PREFERENCES][CATEGORYSETTINGS_SIZE], g_nDownloadPrefs;
 
 // Database name and related handle
 #define DATABASE_NAME "downloadprefs"
@@ -44,7 +57,7 @@ public OnPluginStart() {
 	
 	g_nDownloadPrefs = 0;
 	for (new i = 0; i < MAX_DOWNLOAD_PREFERENCES; i++) {
-		g_rgiCategories[i] = INVALID_DOWNLOAD_CATEGORY;
+		ClearCategory(i);
 	}
 	
 	// Hook to set redirect downloadurl.  If blank, the transmission of sv_downloadurl to the client is not changed.
@@ -200,7 +213,7 @@ SetClientDownloadPreference(client, id, bool:enabled) {
 	if (!IsValidDownloadCategory(id)) {
 		ThrowError("Invalid id %d", id);
 	}
-	SetRawDownloadPreference(GetSteamAccountID(client), g_rgiCategories[id], enabled);
+	SetRawDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), enabled);
 }
 
 public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
@@ -219,7 +232,7 @@ bool:GetClientDownloadPreference(client, id) {
 		SetFailState("Could not get download preference for ID %d", id);
 	}
 	
-	return GetRawDownloadPreference(GetSteamAccountID(client), g_rgiCategories[id]);
+	return GetRawDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id));
 }
 
 public Native_GetClientDownloadPreference(Handle:hPlugin, nParams) {
@@ -236,7 +249,7 @@ bool:ClientHasDownloadPreference(client, id, &any:result = 0) {
 	if (!IsValidDownloadCategory(id)) {
 		SetFailState("Could not check download preference for %N (ID %d)", client, id);
 	}
-	return HasRawDownloadPreference(GetSteamAccountID(client), g_rgiCategories[id], result);
+	return HasRawDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), result);
 }
 
 public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
@@ -285,7 +298,7 @@ _:DownloadCategoryAdded(categoryid) {
 	new bool:bFound = false;
 	
 	for (new i = 0; i < g_nDownloadPrefs; i++) {
-		bFound |= (categoryid == g_rgiCategories[i]);
+		bFound |= (categoryid == GetCategoryIdentifier(i));
 		if (bFound) {
 			// Category already exists
 			return i;
@@ -293,7 +306,7 @@ _:DownloadCategoryAdded(categoryid) {
 	}
 	
 	if (g_nDownloadPrefs < MAX_DOWNLOAD_PREFERENCES) {
-		g_rgiCategories[g_nDownloadPrefs] = categoryid;
+		SetCategoryIdentifier(g_nDownloadPrefs, categoryid);
 		return g_nDownloadPrefs++;
 	}
 	return INVALID_DPREFS_ID;
@@ -303,7 +316,7 @@ _:DownloadCategoryAdded(categoryid) {
  * Checks if the download category is not invalid.
  */
 bool:IsValidDownloadCategory(id) {
-	return g_rgiCategories[id] != INVALID_DOWNLOAD_CATEGORY;
+	return GetCategoryIdentifier(id) != INVALID_DOWNLOAD_CATEGORY;
 }
 
 public Native_GetActiveCategories(Handle:hPlugin, nParams) {
@@ -311,8 +324,8 @@ public Native_GetActiveCategories(Handle:hPlugin, nParams) {
 	new categoryids[size];
 	
 	for (new i = start; i < g_nDownloadPrefs; i++) {
-		if (g_rgiCategories[i] != INVALID_DOWNLOAD_CATEGORY) {
-			categoryids[nCategories++] = g_rgiCategories[i];
+		if (IsValidDownloadCategory(i)) {
+			categoryids[nCategories++] = GetCategoryIdentifier(i);
 		}
 	}
 	
@@ -399,16 +412,16 @@ public Native_HasRawDownloadPreference(Handle:hPlugin, nParams) {
 /**
  * Converts a categoryid to an id.
  */
- public Native_CategoryToIdentifier(Handle:hPlugin, nParams) {
+public Native_CategoryToIdentifier(Handle:hPlugin, nParams) {
 	new categoryid = GetNativeCell(1);
 	for (new i = 0; i < g_nDownloadPrefs; i++) {
-		if (categoryid == g_rgiCategories[i]) {
+		if (categoryid == GetCategoryIdentifier(i)) {
 			// Category already exists
 			return i;
 		}
 	}
 	return INVALID_DPREFS_ID;
- }
+}
 
 /**
  * Runs a query, returning the first integer from the first row.
@@ -421,6 +434,39 @@ _:SQL_QuerySingleRowInt(Handle:database, const String:query[]) {
 	CloseHandle(hQuery);
 	
 	return result;
+}
+
+/**
+ * Wrapper around the data array.
+ */
+SetCategoryIdentifier(slot, id) {
+	g_rgiCategories[slot][DCS_CategoryIdentifier] = id;
+}
+
+_:GetCategoryIdentifier(slot) {
+	return g_rgiCategories[slot][DCS_CategoryIdentifier];
+}
+
+SetCategoryOwner(slot, Handle:hPlugin) {
+	g_rgiCategories[slot][DCS_Owner] = _:hPlugin;
+}
+
+Handle:GetCategoryOwner(slot) {
+	return g_rgiCategories[slot][DCS_Owner];
+}
+
+SetCategoryAccess(slot, DownloadPrefsAccess:access) {
+	g_rgiCategories[slot][DCS_AccessLevel] = _:access;
+}
+
+DownloadPrefsAccess:GetCategoryAccess(slot) {
+	return g_rgiCategories[slot][DCS_AccessLevel];
+}
+
+ClearCategory(slot) {
+	SetCategoryIdentifier(slot, INVALID_DOWNLOAD_CATEGORY);
+	SetCategoryOwner(slot, INVALID_HANDLE);
+	SetCategoryAccess(slot, DownloadPrefsAccess_Private);
 }
 
 /**
