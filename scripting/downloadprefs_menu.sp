@@ -12,7 +12,7 @@
 #undef REQUIRE_PLUGIN
 #include <downloadprefs>
 
-#define PLUGIN_VERSION          "0.2.0"     // Plugin version.
+#define PLUGIN_VERSION          "0.3.0"     // Plugin version.
 
 public Plugin:myinfo = {
     name = "Download Preferences Client Menu",
@@ -39,15 +39,15 @@ public Action:ConCmd_OpenDownloadPrefMenu(iClient, nArgs) {
 	}
 	
 	new category[128];
-	new size = GetActiveCategories(category, sizeof(category));
+	new size = GetAccessibleCategories(category, sizeof(category));
 	
 	new Handle:hMenu = CreateMenu(MenuHandler_DownloadPref, MENU_ACTIONS_ALL);
 	SetMenuTitle(hMenu, "Download Preferences");
 	
 	new String:title[128], String:desc[1], String:id[4], String:display[64];
 	for (new i = 0; i < size; i++) {
-		if (RawCategoryInfo(category[i], title, sizeof(title), desc, sizeof(desc))) {
-			new bool:bPreference = GetClientDownloadPreference(iClient, CategoryToIdentifier(category[i]));
+		if (GetCategoryInfo(category[i], title, sizeof(title), desc, sizeof(desc))) {
+			new bool:bPreference = GetClientDownloadPreference(iClient, category[i]);
 			
 			Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : " ", title);
 			IntToString(category[i], id, sizeof(id));
@@ -75,7 +75,7 @@ public MenuHandler_DownloadPref(Handle:hMenu, MenuAction:iAction, param1, param2
 		case MenuAction_Select: {
 			new iClient = param1, item = param2;
 			GetMenuItem(hMenu, item, sCategory, sizeof(sCategory));
-			new cid = CategoryToIdentifier(StringToInt(sCategory));
+			new cid = StringToInt(sCategory);
 			
 			new bool:bPreference = GetClientDownloadPreference(iClient, cid);
 			SetClientDownloadPreference(iClient, cid, !bPreference);
@@ -87,8 +87,8 @@ public MenuHandler_DownloadPref(Handle:hMenu, MenuAction:iAction, param1, param2
 			GetMenuItem(hMenu, item, sCategory, sizeof(sCategory));
 			new category = StringToInt(sCategory);
 			
-			if (RawCategoryInfo(category, title, sizeof(title), desc, sizeof(desc))) {
-				new bool:bPreference = GetClientDownloadPreference(iClient, CategoryToIdentifier(category));
+			if (GetCategoryInfo(category, title, sizeof(title), desc, sizeof(desc))) {
+				new bool:bPreference = GetClientDownloadPreference(iClient, category);
 				Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : " ", title);
 				
 				return RedrawMenuItem(display);

@@ -12,7 +12,7 @@
 #include <downloadprefs>
 #define REQUIRE_EXTENSIONS
 
-#define PLUGIN_VERSION			"0.0.2"		// Plugin version.
+#define PLUGIN_VERSION			"0.1.0"		// Plugin version.
 public Plugin:myinfo = {
 	name = "Download Preferences Loader",
 	author = "nosoop",
@@ -28,6 +28,12 @@ new bool:g_bDPrefsLoaded = false;
 
 public OnPluginStart() {
 	RegAdminCmd("sm_dprefs_loader_refresh", ConCmd_ReloadCategories, ADMFLAG_ROOT, "Reparses the download preference file.");
+}
+
+public OnPluginEnd() {
+	if (g_bDPrefsLoaded) {
+		UnregClientDownloadCategories();
+	}
 }
 
 public Action:ConCmd_ReloadCategories(client, nArgs) {

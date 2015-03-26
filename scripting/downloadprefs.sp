@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.7.2"
+#define PLUGIN_VERSION			"0.8.0"
 public Plugin:myinfo = {
 	name = "Download Preferences",
 	author = "nosoop",
@@ -22,6 +22,8 @@ public Plugin:myinfo = {
 #define INVALID_DOWNLOAD_CATEGORY -1 // Invalid internal identifier (what the library uses to communicate with the backend)
 #define MAX_SQL_QUERY_LENGTH 512
 #define MAX_URL_LENGTH 256
+
+#define NATIVEERROR_NOPERMISSION 1
 
 enum DownloadPrefsAccess {
 	DownloadPrefsAccess_Public,
@@ -75,20 +77,15 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
 	RegPluginLibrary("downloadprefs");
 	
 	CreateNative("RegClientDownloadCategory", Native_RegClientDownloadCategory);
+	CreateNative("UnregClientDownloadCategories", Native_UnregClientDownloadCategories);
+	
 	CreateNative("RegClientDownloadFile", Native_RegClientDownloadFile);
 	CreateNative("SetClientDownloadPreference", Native_SetClientDownloadPreference);
 	CreateNative("GetClientDownloadPreference", Native_GetClientDownloadPreference);
 	CreateNative("ClientHasDownloadPreference", Native_ClientHasDownloadPreference);
 	
-	// Raw access methods
-	CreateNative("SetRawDownloadPreference", Native_SetRawDownloadPreference);
-	CreateNative("GetRawDownloadPreference", Native_GetRawDownloadPreference);
-	CreateNative("HasRawDownloadPreference", Native_HasRawDownloadPreference);
-	
-	// Unstable methods
-	CreateNative("RawCategoryInfo", Native_RawCategoryInfo);
-	CreateNative("GetActiveCategories", Native_GetActiveCategories);
-	CreateNative("CategoryToIdentifier", Native_CategoryToIdentifier);
+	CreateNative("GetCategoryInfo", Native_GetCategoryInfo);
+	CreateNative("GetAccessibleCategories", Native_GetAccessibleCategories);
 
 	g_hDatabase = GetDatabase();
 	
@@ -179,9 +176,32 @@ public Native_RegClientDownloadCategory(Handle:hPlugin, nParams) {
 	
 	GetNativeString(1, category, sizeof(category));
 	GetNativeString(2, description, sizeof(description));
-	new bool:bDefault = GetNativeCell(3);
+	new bool:bDefault = GetNativeCell(3),
+		DownloadPrefsAccess:access = nParams > 3 ? GetNativeCell(4) : DownloadPrefsAccess_Public;
 	
-	return RegClientDownloadCategory(category, description, bDefault);
+	new id = RegClientDownloadCategory(category, description, bDefault);
+	
+	if (id == INVALID_DPREFS_ID) {
+		return INVALID_DPREFS_ID;
+	} else if (GetCategoryAccess(id) == DownloadPrefsAccess_Public) {
+		return id;
+	} else if (GetCategoryOwner(id) == INVALID_HANDLE) {
+		// Uninitialized category
+		SetCategoryOwner(id, hPlugin);
+		SetCategoryAccess(id, access);
+		return id;
+	}
+	
+	// Non-public with a different owner
+	return INVALID_DPREFS_ID;
+}
+
+public Native_UnregClientDownloadCategories(Handle:hPlugin, nParams) {
+	for (new i = 0; i < g_nDownloadPrefs; i++) {
+		if (GetCategoryOwner(i) == hPlugin) {
+			ClearCategory(i);
+		}
+	}
 }
 
 /**
@@ -194,7 +214,7 @@ RegClientDownloadFile(id, const String:filepath[]) {
 	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
 	Format(sQuery, sizeof(sQuery),
 			"INSERT OR REPLACE INTO files (categoryid, filepath) VALUES (%d, '%s')",
-			g_rgiCategories[id], filepath);
+			GetCategoryIdentifier(id), filepath);
 	SQL_FastQuery(g_hDatabase, sQuery);
 }
 
@@ -219,8 +239,11 @@ SetClientDownloadPreference(client, id, bool:enabled) {
 public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
 	new client = GetNativeCell(1), id = GetNativeCell(2), bool:enabled = GetNativeCell(3);
 	
-	// TODO perform plugin validation
-	SetClientDownloadPreference(client, id, enabled);
+	if (PluginHasWriteAccess(hPlugin, id)) {
+		SetClientDownloadPreference(client, id, enabled);
+	} else {
+		ThrowNativeError(NATIVEERROR_NOPERMISSION, "Plugin %d is not allowed to write preference to category identifier %d", hPlugin, id);
+	}
 }
 
 /**
@@ -238,8 +261,13 @@ bool:GetClientDownloadPreference(client, id) {
 public Native_GetClientDownloadPreference(Handle:hPlugin, nParams) {
 	new client = GetNativeCell(1), id = GetNativeCell(2);
 	
-	// TODO perform plugin validation
-	return GetClientDownloadPreference(client, id);
+	if (PluginHasReadAccess(hPlugin, id)) {
+		return GetClientDownloadPreference(client, id);
+	} else {
+		// Category is private access.
+		ThrowNativeError(NATIVEERROR_NOPERMISSION, "Plugin %d is not allowed to read preferences from category identifier %d", hPlugin, id);
+		return false;
+	}
 }
 
 /**
@@ -254,13 +282,20 @@ bool:ClientHasDownloadPreference(client, id, &any:result = 0) {
 
 public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
 	new client = GetNativeCell(1), id = GetNativeCell(2), result = GetNativeCellRef(3);
-	return ClientHasDownloadPreference(client, id, result);
+	
+	if (PluginHasReadAccess(hPlugin, id)) {
+		return ClientHasDownloadPreference(client, id, result);
+	} else {
+		// Category is private access.
+		ThrowNativeError(NATIVEERROR_NOPERMISSION, "Plugin %d is not allowed to read preferences from category identifier %d", hPlugin, id);
+		return false;
+	}
 }
 
 /**
  * Gets the description of the download category.
  */
-bool:RawCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength) {
+bool:GetCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength) {
 	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
 	new Handle:hQuery = INVALID_HANDLE;
 	new bool:bHasRows;
@@ -279,11 +314,11 @@ bool:RawCategoryInfo(categoryid, String:title[], maxTitleLength, String:descript
 	return bHasRows;
 }
 
-public Native_RawCategoryInfo(Handle:hPlugin, nParams) {
-	new categoryid = GetNativeCell(1), maxTitleLength = GetNativeCell(3), maxDescLength = GetNativeCell(5);
+public Native_GetCategoryInfo(Handle:hPlugin, nParams) {
+	new id = GetNativeCell(1), maxTitleLength = GetNativeCell(3), maxDescLength = GetNativeCell(5);
 	new String:title[maxTitleLength], String:description[maxDescLength];
 	
-	new bool:bResult = RawCategoryInfo(categoryid, title, maxTitleLength, description, maxDescLength);
+	new bool:bResult = GetCategoryInfo(GetCategoryIdentifier(id), title, maxTitleLength, description, maxDescLength);
 	
 	SetNativeString(2, title, maxTitleLength);
 	SetNativeString(3, description, maxDescLength);
@@ -295,7 +330,8 @@ public Native_RawCategoryInfo(Handle:hPlugin, nParams) {
  * Adds the specified category to the active category list.
  */
 _:DownloadCategoryAdded(categoryid) {
-	new bool:bFound = false;
+	new bool:bFound = false,
+		iFree = MAX_DOWNLOAD_PREFERENCES;
 	
 	for (new i = 0; i < g_nDownloadPrefs; i++) {
 		bFound |= (categoryid == GetCategoryIdentifier(i));
@@ -303,11 +339,19 @@ _:DownloadCategoryAdded(categoryid) {
 			// Category already exists
 			return i;
 		}
+		if (GetCategoryIdentifier(i) == INVALID_DOWNLOAD_CATEGORY) {
+			iFree = i < iFree ? i : iFree;
+		}
 	}
 	
 	if (g_nDownloadPrefs < MAX_DOWNLOAD_PREFERENCES) {
-		SetCategoryIdentifier(g_nDownloadPrefs, categoryid);
-		return g_nDownloadPrefs++;
+		if (iFree < MAX_DOWNLOAD_PREFERENCES) {
+			SetCategoryIdentifier(iFree, categoryid);
+			return iFree;
+		} else {
+			SetCategoryIdentifier(g_nDownloadPrefs, categoryid);
+			return g_nDownloadPrefs++;
+		}
 	}
 	return INVALID_DPREFS_ID;
 }
@@ -319,13 +363,13 @@ bool:IsValidDownloadCategory(id) {
 	return GetCategoryIdentifier(id) != INVALID_DOWNLOAD_CATEGORY;
 }
 
-public Native_GetActiveCategories(Handle:hPlugin, nParams) {
+public Native_GetAccessibleCategories(Handle:hPlugin, nParams) {
 	new size = GetNativeCell(2), start = GetNativeCell(3), nCategories;
 	new categoryids[size];
 	
 	for (new i = start; i < g_nDownloadPrefs; i++) {
-		if (IsValidDownloadCategory(i)) {
-			categoryids[nCategories++] = GetCategoryIdentifier(i);
+		if (IsValidDownloadCategory(i) && GetCategoryAccess(i) == DownloadPrefsAccess_Public) {
+			categoryids[nCategories++] = i;
 		}
 	}
 	
@@ -352,11 +396,6 @@ SetRawDownloadPreference(steamid, categoryid, bool:enabled) {
 	SQL_FastQuery(g_hDatabase, sQuery);
 }
 
-public Native_SetRawDownloadPreference(Handle:hPlugin, nParams) {
-	new steamid = GetNativeCell(1), categoryid = GetNativeCell(2), bool:enabled = GetNativeCell(3);
-	SetRawDownloadPreference(steamid, categoryid, enabled);
-}
-
 /**
  * Grants raw access to retrieve the download preference for the specified SteamID and category.
  */
@@ -372,11 +411,6 @@ bool:GetRawDownloadPreference(steamid, categoryid) {
 	}
 	
 	return bPreferenceEnabled;
-}
-
-public Native_GetRawDownloadPreference(Handle:hPlugin, nParams) {
-	new steamid = GetNativeCell(1), categoryid = GetNativeCell(2);
-	return GetRawDownloadPreference(steamid, categoryid);
 }
 
 /**
@@ -398,29 +432,6 @@ bool:HasRawDownloadPreference(steamid, categoryid, &any:result = 0) {
 	
 	CloseHandle(hQuery);
 	return bHasRows;
-}
-
-public Native_HasRawDownloadPreference(Handle:hPlugin, nParams) {
-	new steamid = GetNativeCell(1), categoryid = GetNativeCell(2), bool:result;
-	
-	new bool:response = HasRawDownloadPreference(steamid, categoryid, result);
-	SetNativeCellRef(3, result);
-	
-	return response;
-}
-
-/**
- * Converts a categoryid to an id.
- */
-public Native_CategoryToIdentifier(Handle:hPlugin, nParams) {
-	new categoryid = GetNativeCell(1);
-	for (new i = 0; i < g_nDownloadPrefs; i++) {
-		if (categoryid == GetCategoryIdentifier(i)) {
-			// Category already exists
-			return i;
-		}
-	}
-	return INVALID_DPREFS_ID;
 }
 
 /**
@@ -452,7 +463,7 @@ SetCategoryOwner(slot, Handle:hPlugin) {
 }
 
 Handle:GetCategoryOwner(slot) {
-	return g_rgiCategories[slot][DCS_Owner];
+	return Handle:g_rgiCategories[slot][DCS_Owner];
 }
 
 SetCategoryAccess(slot, DownloadPrefsAccess:access) {
@@ -460,13 +471,21 @@ SetCategoryAccess(slot, DownloadPrefsAccess:access) {
 }
 
 DownloadPrefsAccess:GetCategoryAccess(slot) {
-	return g_rgiCategories[slot][DCS_AccessLevel];
+	return DownloadPrefsAccess:g_rgiCategories[slot][DCS_AccessLevel];
 }
 
 ClearCategory(slot) {
 	SetCategoryIdentifier(slot, INVALID_DOWNLOAD_CATEGORY);
 	SetCategoryOwner(slot, INVALID_HANDLE);
 	SetCategoryAccess(slot, DownloadPrefsAccess_Private);
+}
+
+bool:PluginHasReadAccess(Handle:hPlugin, slot) {
+	return GetCategoryOwner(slot) == hPlugin || GetCategoryAccess(slot) != DownloadPrefsAccess_Private;
+}
+
+bool:PluginHasWriteAccess(Handle:hPlugin, slot) {
+	return GetCategoryOwner(slot) == hPlugin || GetCategoryAccess(slot) == DownloadPrefsAccess_Public;
 }
 
 /**

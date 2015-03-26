@@ -14,21 +14,22 @@ public SharedPlugin:__pl_downloadprefs = {
 };
 
 public __pl_downloadprefs_SetNTVOptional() {
-    MarkNativeAsOptional("RegClientDownloadCategory");
-    MarkNativeAsOptional("RegClientDownloadFile");
-    MarkNativeAsOptional("SetClientDownloadPreference");
-    MarkNativeAsOptional("GetClientDownloadPreference");
-    MarkNativeAsOptional("ClientHasDownloadPreference");
+	MarkNativeAsOptional("RegClientDownloadCategory");
+	MarkNativeAsOptional("UnregClientDownloadCategories");
 	
-	// Raw access methods
-    MarkNativeAsOptional("SetRawDownloadPreference");
-    MarkNativeAsOptional("GetRawDownloadPreference");
-    MarkNativeAsOptional("HasRawDownloadPreference");
+	MarkNativeAsOptional("RegClientDownloadFile");
+	MarkNativeAsOptional("SetClientDownloadPreference");
+	MarkNativeAsOptional("GetClientDownloadPreference");
+	MarkNativeAsOptional("ClientHasDownloadPreference");
 	
-	// Unstable
-    MarkNativeAsOptional("RawCategoryInfo");
-    MarkNativeAsOptional("GetActiveCategories");
-    MarkNativeAsOptional("CategoryToIdentifier");
+	MarkNativeAsOptional("GetCategoryInfo");
+	MarkNativeAsOptional("GetAccessibleCategories");
+}
+
+enum DownloadPrefsAccess {
+	DownloadPrefsAccess_Public, // Read / write access is given to all plugins
+	DownloadPrefsAccess_Protected, // Read access is given to all plugins, writable only by host plugin
+	DownloadPrefsAccess_Private, // Only host plugin is allowed to read / write to this category
 }
 
 /**
@@ -39,10 +40,16 @@ public __pl_downloadprefs_SetNTVOptional() {
  * @param category          The category name to register.
  * @param description       The description associated with the category.
  * @param enabled           The file group is downloaded by default; clients must choose to opt-out.
+ * @param access            The access level for this category.
  * 
  * @return id               A plugin-granted identifier for the category.
  */
-native _:RegClientDownloadCategory(const String:category[], const String:description[], bool:enabled = true);
+native _:RegClientDownloadCategory(const String:category[], const String:description[], bool:enabled = true, DownloadPrefsAccess:access = DownloadPrefsAccess_Public);
+
+/**
+ * Unregisters all previously loaded categories associated with this plugin.
+ */
+native UnregClientDownloadCategories();
 
 /**
  * Registers a file to a category.
@@ -86,34 +93,9 @@ native bool:GetClientDownloadPreference(client, id);
 native bool:ClientHasDownloadPreference(client, id, &any:result = 0);
 
 /**
- * Raw accessor functions below.
- * They have no checks for steamid / categoryid, are dependent on numbered categories in the database, and are not cached.
- * Be careful!
- */
-
-/**
- * Sets a player's preference of a category by Steam account number.
- */
-native SetRawDownloadPreference(steamid, categoryid, bool:enabled);
-
-/**
- * Gets a player's preference of a category by Steam account number.
- */
-native bool:GetRawDownloadPreference(steamid, categoryid);
-
-/**
- * Checks whether or not the Steam account has their own download preference set for a category.
- */
-native bool:HasRawDownloadPreference(steamid, categoryid, &any:result = 0);
-
-/**
- * Methods below should be considered unstable.
- */
-
-/**
  * Gets the name and description of a download preference.
  *
- * @param categoryid        The category to get a name / description of.
+ * @param id                The category to get a name / description of.
  * @param title             Buffer to store category name.
  * @param maxTitleLength    Size of title buffer.
  * @param description       Buffer to store category description.
@@ -121,20 +103,15 @@ native bool:HasRawDownloadPreference(steamid, categoryid, &any:result = 0);
  *
  * @return                  Whether or not the category exists.
  */
-native bool:RawCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength);
+native bool:GetCategoryInfo(id, String:title[], maxTitleLength, String:description[], maxDescLength);
 
 /**
  * Gets an array containing loaded categoryids.
  * 
- * @param categoryids       An array containing a list of categories loaded by downloadprefs.
+ * @param ids               An array to store a list of identifiers that this plugin can access.
  * @param size              The maximum size of the array
  * @param start             The index of the array to start with.
  * 
  * @return                  The number of categories loaded.
  */
-native _:GetActiveCategories(categoryids[], size, start = 0);
-
-/**
- * Converts a categoryid to a plugin-granted identifier.
- */
-native _:CategoryToIdentifier(categoryid);
+native _:GetAccessibleCategories(ids[], size, start = 0);
