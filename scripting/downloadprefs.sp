@@ -12,7 +12,7 @@
 // Compile with SQLite support by default.
 #include "downloadprefs/db-sqlite.sp"
 
-#define PLUGIN_VERSION			"0.9.0"
+#define PLUGIN_VERSION			"0.9.0-prefcache"
 public Plugin:myinfo = {
 	name = "Download Preferences",
 	author = "nosoop",
@@ -48,7 +48,8 @@ new g_rgiCategories[MAX_DOWNLOAD_PREFERENCES][CATEGORYSETTINGS_SIZE], g_nDownloa
 new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
 	Handle:g_hCDPrefURL = INVALID_HANDLE; // sm_dprefs_downloadurl
 
-// TODO allocate new g_rgDownloadPreferences[MAXPLAYERS][MAX_DOWNLOAD_PREFERENCES];
+new bool:g_rgDownloadPreferences[MAX_DOWNLOAD_PREFERENCES][MAXPLAYERS],
+	g_rgPreferencesCached[MAXPLAYERS];
 
 public OnPluginStart() {
 	CreateConVar("sm_dprefs_version", PLUGIN_VERSION, _, FCVAR_PLUGIN | FCVAR_NOTIFY);
@@ -56,6 +57,10 @@ public OnPluginStart() {
 	g_nDownloadPrefs = 0;
 	for (new i = 0; i < MAX_DOWNLOAD_PREFERENCES; i++) {
 		ClearCategory(i);
+	}
+	
+	for (new c = MaxClients; c > 0; c--) {
+		CacheClientPreferences(c);
 	}
 	
 	// Hook to set redirect downloadurl.  If blank, the transmission of sv_downloadurl to the client is not changed.
@@ -122,7 +127,22 @@ public OnClientPostAdminCheck(client) {
 		new String:sDefaultDownloadURL[MAX_URL_LENGTH];
 		GetConVarString(g_hCDownloadURL, sDefaultDownloadURL, sizeof(sDefaultDownloadURL));
 		SendConVarValue(client, g_hCDownloadURL, sDefaultDownloadURL);
+		
+		CacheClientPreferences(client);
 	}
+}
+
+CacheClientPreferences(client) {
+	for (new i = 0; i < g_nDownloadPrefs; i++) {
+		if (IsValidDownloadCategory(i) && IsClientConnected(client) && !IsFakeClient(client)) {
+			GetClientDownloadPreference(client, i, true);
+		}
+	}
+	g_rgPreferencesCached[client] = true;
+}
+
+public OnClientDisconnect(client) {
+	g_rgPreferencesCached[client] = false;
 }
 
 /**
@@ -152,6 +172,14 @@ public Native_RegClientDownloadCategory(Handle:hPlugin, nParams) {
 		// Uninitialized category
 		SetCategoryOwner(id, hPlugin);
 		SetCategoryAccess(id, access);
+		
+		// Load preferences from database
+		for (new c = MaxClients; c > 0; c--) {
+			if (IsValidDownloadCategory(id) && IsClientConnected(c) && !IsFakeClient(c)) {
+				GetClientDownloadPreference(c, id, true);
+			}
+		}
+		
 		return id;
 	}
 	
@@ -182,7 +210,7 @@ public Native_RegClientDownloadFile(Handle:hPlugin, nParams) {
 	decl String:filepath[PLATFORM_MAX_PATH]; GetNativeString(2, filepath, sizeof(filepath));
 	
 	if (PluginHasWriteAccess(hPlugin, id)) {
-	RegClientDownloadFile(id, filepath);
+		RegClientDownloadFile(id, filepath);
 	} else {
 		ThrowNativeError(NATIVEERROR_NOPERMISSION, "Plugin %d is not allowed to add files to category identifier %d", hPlugin, id);
 	}
@@ -194,8 +222,10 @@ public Native_RegClientDownloadFile(Handle:hPlugin, nParams) {
 SetClientDownloadPreference(client, id, bool:enabled) {
 	if (!IsValidDownloadCategory(id)) {
 		ThrowError("Invalid id %d", id);
+	} else if (enabled != g_rgDownloadPreferences[id][client]) {
+		g_rgDownloadPreferences[id][client] = enabled;
+		RawSetDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), enabled);
 	}
-	RawSetDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), enabled);
 }
 
 public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
@@ -212,11 +242,14 @@ public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
  * Retrieves a client's download preference.  If non-existent, will return the default setting.
  * A client will keep their existing download preference until a map change or reconnect.
  */
-bool:GetClientDownloadPreference(client, id) {
+bool:GetClientDownloadPreference(client, id, bool:forceReadToCache = false) {
 	if (!IsValidDownloadCategory(id)) {
 		SetFailState("Could not get download preference for ID %d", id);
 	}
-	return RawGetDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id));
+	if (forceReadToCache) {
+		g_rgDownloadPreferences[id][client] = RawGetDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id));
+	}
+	return g_rgDownloadPreferences[id][client];
 }
 
 public Native_GetClientDownloadPreference(Handle:hPlugin, nParams) {
