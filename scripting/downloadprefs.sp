@@ -9,7 +9,10 @@
 #pragma semicolon 1
 #include <sourcemod>
 
-#define PLUGIN_VERSION			"0.8.0"
+// Compile with SQLite support by default.
+#include "downloadprefs/db-sqlite.sp"
+
+#define PLUGIN_VERSION			"0.8.1"
 public Plugin:myinfo = {
 	name = "Download Preferences",
 	author = "nosoop",
@@ -20,7 +23,6 @@ public Plugin:myinfo = {
 
 #define INVALID_DPREFS_ID -1 // Invalid external identifier (what plugins use to communicate with the library)
 #define INVALID_DOWNLOAD_CATEGORY -1 // Invalid internal identifier (what the library uses to communicate with the backend)
-#define MAX_SQL_QUERY_LENGTH 512
 #define MAX_URL_LENGTH 256
 
 #define NATIVEERROR_NOPERMISSION 1
@@ -42,17 +44,11 @@ enum CategorySettings {
 #define MAX_DOWNLOAD_PREFERENCES 64
 new g_rgiCategories[MAX_DOWNLOAD_PREFERENCES][CATEGORYSETTINGS_SIZE], g_nDownloadPrefs;
 
-// Database name and related handle
-#define DATABASE_NAME "downloadprefs"
-new Handle:g_hDatabase = INVALID_HANDLE;
-
 // ConVar handles
 new Handle:g_hCDownloadURL = INVALID_HANDLE, // sv_downloadurl
 	Handle:g_hCDPrefURL = INVALID_HANDLE; // sm_dprefs_downloadurl
 
 // TODO allocate new g_rgDownloadPreferences[MAXPLAYERS][MAX_DOWNLOAD_PREFERENCES];
-
-// TODO perform plugin / category validation
 
 public OnPluginStart() {
 	CreateConVar("sm_dprefs_version", PLUGIN_VERSION, _, FCVAR_PLUGIN | FCVAR_NOTIFY);
@@ -87,7 +83,7 @@ public APLRes:AskPluginLoad2(Handle:hMySelf, bool:bLate, String:strError[], iMax
 	CreateNative("GetCategoryInfo", Native_GetCategoryInfo);
 	CreateNative("GetAccessibleCategories", Native_GetAccessibleCategories);
 
-	g_hDatabase = GetDatabase();
+	PrepareDatabase();
 	
 	return APLRes_Success;
 }
@@ -135,40 +131,7 @@ public OnClientPostAdminCheck(client) {
  * returning an ID to the corresponding category.
  */
 _:RegClientDownloadCategory(const String:category[], const String:description[], bool:enabled = true) {
-	new Handle:hQuery = INVALID_HANDLE, categoryid;
-	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
-	
-	new String:safeCategory[128];
-	SQL_EscapeString(g_hDatabase, category, safeCategory, sizeof(safeCategory));
-	
-	// TODO Proper fix for query sanitization and abstraction
-	Format(sQuery, sizeof(sQuery), "SELECT categoryid FROM categories WHERE categoryname='%s'",
-			safeCategory);
-	hQuery = SQL_Query(g_hDatabase, sQuery);
-	
-	// Category does not exist; create it.
-	if (SQL_GetRowCount(hQuery) == 0 && CloseHandle(hQuery)) {
-		new String:error[4];
-		new Handle:hStmt = SQL_PrepareQuery(g_hDatabase,
-				"INSERT OR REPLACE INTO categories (categoryid, categoryname, categorydesc, enabled) VALUES (NULL, ?, ?, ?)",
-				error, sizeof(error));
-		
-		SQL_BindParamString(hStmt, 0, category, false);
-		SQL_BindParamString(hStmt, 1, description, false);
-		SQL_BindParamInt(hStmt, 2, enabled);
-		SQL_Execute(hStmt);
-		CloseHandle(hStmt);
-	}
-	
-	Format(sQuery, sizeof(sQuery), "SELECT categoryid FROM categories WHERE categoryname='%s'",
-			safeCategory);
-	hQuery = SQL_Query(g_hDatabase, sQuery);
-	SQL_FetchRow(hQuery);
-	categoryid = SQL_FetchInt(hQuery, 0);
-	
-	CloseHandle(hQuery);
-	
-	return DownloadCategoryAdded(categoryid);
+	return DownloadCategoryAdded(RawCreateCategory(category, description, enabled));
 }
 
 public Native_RegClientDownloadCategory(Handle:hPlugin, nParams) {
@@ -211,19 +174,18 @@ RegClientDownloadFile(id, const String:filepath[]) {
 	if (!IsValidDownloadCategory(id)) {
 		ThrowError("Invalid id %d", id);
 	}
-	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
-	Format(sQuery, sizeof(sQuery),
-			"INSERT OR REPLACE INTO files (categoryid, filepath) VALUES (%d, '%s')",
-			GetCategoryIdentifier(id), filepath);
-	SQL_FastQuery(g_hDatabase, sQuery);
+	RawAssignFileCategory(GetCategoryIdentifier(id), filepath);
 }
 
 public Native_RegClientDownloadFile(Handle:hPlugin, nParams) {
 	new id = GetNativeCell(1);
 	decl String:filepath[PLATFORM_MAX_PATH]; GetNativeString(2, filepath, sizeof(filepath));
 	
-	// TODO perform plugin validation
+	if (PluginHasWriteAccess(hPlugin, id)) {
 	RegClientDownloadFile(id, filepath);
+	} else {
+		ThrowNativeError(NATIVEERROR_NOPERMISSION, "Plugin %d is not allowed to add files to category identifier %d", hPlugin, id);
+	}
 }
 
 /**
@@ -254,7 +216,6 @@ bool:GetClientDownloadPreference(client, id) {
 	if (!IsValidDownloadCategory(id)) {
 		SetFailState("Could not get download preference for ID %d", id);
 	}
-	
 	return GetRawDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id));
 }
 
@@ -295,30 +256,15 @@ public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
 /**
  * Gets the description of the download category.
  */
-bool:GetCategoryInfo(categoryid, String:title[], maxTitleLength, String:description[], maxDescLength) {
-	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
-	new Handle:hQuery = INVALID_HANDLE;
-	new bool:bHasRows;
-	
-	Format(sQuery, sizeof(sQuery), "SELECT categoryname, categorydesc FROM categories WHERE categoryid=%d",
-			categoryid);
-	hQuery = SQL_Query(g_hDatabase, sQuery);
-	
-	if ((bHasRows = (SQL_GetRowCount(hQuery) > 0))) {
-		SQL_FetchRow(hQuery);
-		SQL_FetchString(hQuery, 0, title, maxTitleLength);
-		SQL_FetchString(hQuery, 1, description, maxDescLength);
-	}
-	
-	CloseHandle(hQuery);
-	return bHasRows;
+bool:GetCategoryInfo(id, String:title[], maxTitleLength, String:description[], maxDescLength) {
+	return RawGetCategoryInfo(GetCategoryIdentifier(categoryid), title, maxTitleLength, description, maxDescLength);
 }
 
 public Native_GetCategoryInfo(Handle:hPlugin, nParams) {
 	new id = GetNativeCell(1), maxTitleLength = GetNativeCell(3), maxDescLength = GetNativeCell(5);
 	new String:title[maxTitleLength], String:description[maxDescLength];
 	
-	new bool:bResult = GetCategoryInfo(GetCategoryIdentifier(id), title, maxTitleLength, description, maxDescLength);
+	new bool:bResult = GetCategoryInfo(id, title, maxTitleLength, description, maxDescLength);
 	
 	SetNativeString(2, title, maxTitleLength);
 	SetNativeString(3, description, maxDescLength);
@@ -379,77 +325,9 @@ public Native_GetAccessibleCategories(Handle:hPlugin, nParams) {
 }
 
 /**
- * Provides raw access to update the database for the specified SteamID.
+ * Wrapper functions around the data array.
  */
-SetRawDownloadPreference(steamid, categoryid, bool:enabled) {
-	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
-	
-	if (HasRawDownloadPreference(steamid, categoryid)) {
-		// Update existing entry.
-		Format(sQuery, sizeof(sQuery), "UPDATE downloadprefs SET enabled = %d WHERE sid3 = %d AND categoryid = %d",
-				_:enabled, steamid, categoryid);
-	} else {
-		// Create new entry.
-		Format(sQuery, sizeof(sQuery), "INSERT INTO downloadprefs (sid3, categoryid, enabled) VALUES (%d, %d, %d)",
-				steamid, categoryid, _:enabled);
-	}
-	SQL_FastQuery(g_hDatabase, sQuery);
-}
 
-/**
- * Grants raw access to retrieve the download preference for the specified SteamID and category.
- */
-bool:GetRawDownloadPreference(steamid, categoryid) {
-	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
-	new bool:bPreferenceEnabled;
-	
-	if (!HasRawDownloadPreference(steamid, categoryid, bPreferenceEnabled)) {
-		// Default preference for category
-		Format(sQuery, sizeof(sQuery), "SELECT enabled FROM categories WHERE categoryid=%d",
-				categoryid);
-		bPreferenceEnabled = bool:SQL_QuerySingleRowInt(g_hDatabase, sQuery);
-	}
-	
-	return bPreferenceEnabled;
-}
-
-/**
- * Checks if a SteamID has a preference set for a category.
- */
-bool:HasRawDownloadPreference(steamid, categoryid, &any:result = 0) {
-	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
-
-	new bool:bHasRows;
-	new Handle:hQuery = INVALID_HANDLE;
-	Format(sQuery, sizeof(sQuery), "SELECT enabled FROM downloadprefs WHERE sid3=%d AND categoryid=%d",
-			steamid, categoryid);
-	hQuery = SQL_Query(g_hDatabase, sQuery);
-	
-	if ((bHasRows = (SQL_GetRowCount(hQuery) > 0))) {
-		SQL_FetchRow(hQuery);
-		result = bool:SQL_FetchInt(hQuery, 0);
-	}
-	
-	CloseHandle(hQuery);
-	return bHasRows;
-}
-
-/**
- * Runs a query, returning the first integer from the first row.
- */
-_:SQL_QuerySingleRowInt(Handle:database, const String:query[]) {
-	new result;
-	new Handle:hQuery = SQL_Query(database, query);
-	
-	result = SQL_FetchInt(hQuery, 0);
-	CloseHandle(hQuery);
-	
-	return result;
-}
-
-/**
- * Wrapper around the data array.
- */
 SetCategoryIdentifier(slot, id) {
 	g_rgiCategories[slot][DCS_CategoryIdentifier] = id;
 }
@@ -486,25 +364,6 @@ bool:PluginHasReadAccess(Handle:hPlugin, slot) {
 
 bool:PluginHasWriteAccess(Handle:hPlugin, slot) {
 	return GetCategoryOwner(slot) == hPlugin || GetCategoryAccess(slot) == DownloadPrefsAccess_Public;
-}
-
-/**
- * Reads the database configuration.
- */
-Handle:GetDatabase() {	
-	new Handle:hDatabase = INVALID_HANDLE;
-	
-	if (SQL_CheckConfig(DATABASE_NAME)) {
-		decl String:sErrorBuffer[256];
-		if ( (hDatabase = SQL_Connect(DATABASE_NAME, true, sErrorBuffer, sizeof(sErrorBuffer))) == INVALID_HANDLE ) {
-			SetFailState("[downloadprefs] Could not connect to database: %s", sErrorBuffer);
-		} else {
-			return hDatabase;
-		}
-	} else {
-		SetFailState("[downloadprefs] Could not find configuration %s to load database.", DATABASE_NAME);
-	}
-	return INVALID_HANDLE;
 }
 
 /**
