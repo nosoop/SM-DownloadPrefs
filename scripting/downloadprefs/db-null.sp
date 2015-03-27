@@ -27,17 +27,17 @@ Handle:GetDatabase() { return INVALID_HANDLE; }
 /**
  * Provides raw access to update the database for the specified SteamID.
  */
-SetRawDownloadPreference(steamid, categoryid, bool:enabled) {}
+RawSetDownloadPreference(steamid, categoryid, bool:enabled) {}
 
 /**
  * Grants raw access to retrieve the download preference for the specified SteamID and category.
  */
-bool:GetRawDownloadPreference(steamid, categoryid) { return false; }
+bool:RawGetDownloadPreference(steamid, categoryid) { return false; }
 
 /**
  * Checks if a SteamID has a preference set for a category.
  */
-bool:HasRawDownloadPreference(steamid, categoryid, &any:result = 0) { return false; }
+bool:RawHasDownloadPreference(steamid, categoryid, &any:result = 0) { return false; }
 
 /**
  * Assigns a file to a category.

@@ -36,10 +36,10 @@ Handle:GetDatabase() {
 /**
  * Provides raw access to update the database for the specified SteamID.
  */
-SetRawDownloadPreference(steamid, categoryid, bool:enabled) {
+RawSetDownloadPreference(steamid, categoryid, bool:enabled) {
 	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
 	
-	if (HasRawDownloadPreference(steamid, categoryid)) {
+	if (RawHasDownloadPreference(steamid, categoryid)) {
 		// Update existing entry.
 		Format(sQuery, sizeof(sQuery), "UPDATE downloadprefs SET enabled = %d WHERE sid3 = %d AND categoryid = %d",
 				_:enabled, steamid, categoryid);
@@ -54,11 +54,11 @@ SetRawDownloadPreference(steamid, categoryid, bool:enabled) {
 /**
  * Grants raw access to retrieve the download preference for the specified SteamID and category.
  */
-bool:GetRawDownloadPreference(steamid, categoryid) {
+bool:RawGetDownloadPreference(steamid, categoryid) {
 	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
 	new bool:bPreferenceEnabled;
 	
-	if (!HasRawDownloadPreference(steamid, categoryid, bPreferenceEnabled)) {
+	if (!RawHasDownloadPreference(steamid, categoryid, bPreferenceEnabled)) {
 		// Fallback to default preference
 		Format(sQuery, sizeof(sQuery), "SELECT enabled FROM categories WHERE categoryid=%d",
 				categoryid);
@@ -71,7 +71,7 @@ bool:GetRawDownloadPreference(steamid, categoryid) {
 /**
  * Checks if a SteamID has a preference set for a category.
  */
-bool:HasRawDownloadPreference(steamid, categoryid, &any:result = 0) {
+bool:RawHasDownloadPreference(steamid, categoryid, &any:result = 0) {
 	decl String:sQuery[MAX_SQL_QUERY_LENGTH];
 
 	new bool:bHasRows;

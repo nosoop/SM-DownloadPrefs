@@ -12,7 +12,7 @@
 // Compile with SQLite support by default.
 #include "downloadprefs/db-sqlite.sp"
 
-#define PLUGIN_VERSION			"0.8.1"
+#define PLUGIN_VERSION			"0.9.0"
 public Plugin:myinfo = {
 	name = "Download Preferences",
 	author = "nosoop",
@@ -195,7 +195,7 @@ SetClientDownloadPreference(client, id, bool:enabled) {
 	if (!IsValidDownloadCategory(id)) {
 		ThrowError("Invalid id %d", id);
 	}
-	SetRawDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), enabled);
+	RawSetDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), enabled);
 }
 
 public Native_SetClientDownloadPreference(Handle:hPlugin, nParams) {
@@ -216,7 +216,7 @@ bool:GetClientDownloadPreference(client, id) {
 	if (!IsValidDownloadCategory(id)) {
 		SetFailState("Could not get download preference for ID %d", id);
 	}
-	return GetRawDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id));
+	return RawGetDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id));
 }
 
 public Native_GetClientDownloadPreference(Handle:hPlugin, nParams) {
@@ -238,7 +238,7 @@ bool:ClientHasDownloadPreference(client, id, &any:result = 0) {
 	if (!IsValidDownloadCategory(id)) {
 		SetFailState("Could not check download preference for %N (ID %d)", client, id);
 	}
-	return HasRawDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), result);
+	return RawHasDownloadPreference(GetSteamAccountID(client), GetCategoryIdentifier(id), result);
 }
 
 public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
@@ -257,7 +257,7 @@ public Native_ClientHasDownloadPreference(Handle:hPlugin, nParams) {
  * Gets the description of the download category.
  */
 bool:GetCategoryInfo(id, String:title[], maxTitleLength, String:description[], maxDescLength) {
-	return RawGetCategoryInfo(GetCategoryIdentifier(categoryid), title, maxTitleLength, description, maxDescLength);
+	return RawGetCategoryInfo(GetCategoryIdentifier(id), title, maxTitleLength, description, maxDescLength);
 }
 
 public Native_GetCategoryInfo(Handle:hPlugin, nParams) {
@@ -313,7 +313,7 @@ public Native_GetAccessibleCategories(Handle:hPlugin, nParams) {
 	new size = GetNativeCell(2), start = GetNativeCell(3), nCategories;
 	new categoryids[size];
 	
-	for (new i = start; i < g_nDownloadPrefs; i++) {
+	for (new i = start; i < g_nDownloadPrefs && nCategories < size; i++) {
 		if (IsValidDownloadCategory(i) && GetCategoryAccess(i) == DownloadPrefsAccess_Public) {
 			categoryids[nCategories++] = i;
 		}
