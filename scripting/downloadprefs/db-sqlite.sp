@@ -94,7 +94,11 @@ RawAssignFileCategory(categoryid, const String:filepath[]) {
 	Format(sQuery, sizeof(sQuery),
 			"INSERT OR REPLACE INTO files (categoryid, filepath) VALUES (%d, '%s')",
 			categoryid, filepath);
-	SQL_FastQuery(g_hDatabase, sQuery);
+	SQL_TQuery(g_hDatabase, SQLTCallback_FileCategoryAssigned, sQuery);
+}
+
+public SQLTCallback_FileCategoryAssigned(Handle:hOwner, Handle:hChild, const String:error[], any:data) {
+	// Uh huh.  Okay.
 }
 
 _:RawCreateCategory(const String:category[], const String:description[], bool:enabled = true) {
