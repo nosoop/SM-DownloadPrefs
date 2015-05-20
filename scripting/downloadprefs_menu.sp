@@ -12,7 +12,7 @@
 #undef REQUIRE_PLUGIN
 #include <downloadprefs>
 
-#define PLUGIN_VERSION          "0.3.0"     // Plugin version.
+#define PLUGIN_VERSION          "0.3.1"     // Plugin version.
 
 public Plugin:myinfo = {
     name = "Download Preferences Client Menu",
@@ -49,7 +49,7 @@ public Action:ConCmd_OpenDownloadPrefMenu(iClient, nArgs) {
 		if (GetCategoryInfo(category[i], title, sizeof(title), desc, sizeof(desc))) {
 			new bool:bPreference = GetClientDownloadPreference(iClient, category[i]);
 			
-			Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : " ", title);
+			Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : "_", title);
 			IntToString(category[i], id, sizeof(id));
 			
 			AddMenuItem(hMenu, id, display);
@@ -89,7 +89,7 @@ public MenuHandler_DownloadPref(Handle:hMenu, MenuAction:iAction, param1, param2
 			
 			if (GetCategoryInfo(category, title, sizeof(title), desc, sizeof(desc))) {
 				new bool:bPreference = GetClientDownloadPreference(iClient, category);
-				Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : " ", title);
+				Format(display, sizeof(display), "[%s] %s", bPreference ? "x" : "_", title);
 				
 				return RedrawMenuItem(display);
 			}
