@@ -52,7 +52,7 @@
 				return;
 			} else {
 				// This file is opt-in.
-				header("HTTP/1.1 403 Forbidden");
+				header("HTTP/1.1 404 Not Found");
 				
 				$errorPage = $errorPages['opt-in-required'];
 				if (!is_null($errorPage)) {
